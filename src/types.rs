@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -9,7 +9,7 @@ pub enum EasingType {
     EaseIn,
     EaseOut,
     EaseInOut,
-    CubicBezier, // (p1x, p1y, p2x, p2y) stored separately if parameterized or struct
+    CubicBezier,
     Step,
 }
 
@@ -40,6 +40,25 @@ impl Default for TransformData {
     }
 }
 
+fn deserialize_iterations<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<f64>::deserialize(deserializer)?;
+    Ok(opt.unwrap_or(std::f64::INFINITY))
+}
+
+fn serialize_iterations<S>(val: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if val.is_infinite() {
+        serializer.serialize_none()
+    } else {
+        serializer.serialize_f64(*val)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyframeData {
     pub time: f64, // local time in milliseconds
@@ -54,8 +73,17 @@ pub struct AnimationClipData {
     pub id: String,
     pub duration: f64, // ms
     pub easing: EasingType,
-    pub iterations: f64, // std::f64::INFINITY supported
+    #[serde(
+        deserialize_with = "deserialize_iterations",
+        serialize_with = "serialize_iterations",
+        default = "default_iterations"
+    )]
+    pub iterations: f64,
     pub keyframes: Vec<KeyframeData>,
+}
+
+fn default_iterations() -> f64 {
+    1.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

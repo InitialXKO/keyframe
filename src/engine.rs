@@ -80,10 +80,23 @@ impl EngineState {
             self.timeline
                 .compute_clip_states(global_time, &clip_durations, &self.clip_index_map);
 
+        let scheduled_nodes = self.timeline.flatten();
+        let mut scheduled_map: HashMap<String, f64> = HashMap::new();
+        for item in scheduled_nodes {
+            scheduled_map.insert(item.instance_id, item.absolute_start_time);
+        }
+
         for inst in &self.instances {
             if let Some(clip) = self.clips.get(&inst.data.clip_id) {
                 let clip_idx = *self.clip_index_map.get(&inst.data.clip_id).unwrap_or(&0);
-                let gpu_inst = inst.evaluate(global_time, clip, clip_idx);
+
+                // If instance is scheduled via timeline tree, add absolute start time to delay
+                let mut inst_to_eval = inst.clone();
+                if let Some(&timeline_start) = scheduled_map.get(&inst.data.id) {
+                    inst_to_eval.data.delay += timeline_start;
+                }
+
+                let gpu_inst = inst_to_eval.evaluate(global_time, clip, clip_idx);
                 self.evaluated_gpu_instances.push(gpu_inst);
             }
         }

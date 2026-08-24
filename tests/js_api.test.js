@@ -6,12 +6,13 @@ import { spring, interpolate, Sequence, Series, setRemotionFrameContext, useCurr
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
-test("Builder API constructs valid Clip and Instance IR", () => {
+test("Builder API constructs valid Clip and Instance IR with Infinity iterations", () => {
   const engine = new Engine();
 
   const clip = new Clip("test_clip")
     .duration(2000)
     .easing(Easing.EaseInOut)
+    .iterations(Infinity)
     .addKeyframe(
       new Keyframe(0)
         .transform(new TransformBuilder().translateX(0).scale(1).build())
