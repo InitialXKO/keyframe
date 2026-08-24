@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Remotion Compatibility Layer Demo</title>
+  <style>
+    body { margin: 20px; font-family: sans-serif; background: #181818; color: #fff; }
+    #output { font-family: monospace; font-size: 16px; background: #282828; padding: 15px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Remotion Syntax Compatibility Layer Demo</h1>
+  <div id="output">Calculating frame 45 spring & interpolate values...</div>
+  <script type="module">
+    import { Remotion } from '../../dist/index.js';
+
+    const { spring, interpolate, Sequence, setRemotionFrameContext, useCurrentFrame } = Remotion;
+
+    setRemotionFrameContext(45, { fps: 30 });
+
+    const currentFrame = useCurrentFrame();
+    const scale = spring({ frame: currentFrame, fps: 30, config: { damping: 12, stiffness: 100 } });
+    const opacity = interpolate(currentFrame, [0, 30, 60], [0, 1, 0], { extrapolateRight: 'clamp' });
+
+    document.getElementById('output').innerText =
+      `Frame: ${currentFrame}\n` +
+      `Spring Scale: ${scale.toFixed(4)}\n` +
+      `Interpolated Opacity: ${opacity.toFixed(4)}`;
+  </script>
+</body>
+</html>

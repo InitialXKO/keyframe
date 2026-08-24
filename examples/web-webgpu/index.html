@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WebGPU Particle System (10,000 Instances)</title>
+  <style>
+    body { margin: 0; background: #000; color: #fff; font-family: sans-serif; text-align: center; }
+    canvas { width: 800px; height: 600px; border: 1px solid #333; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>WebGPU Particle System (10k Instances)</h1>
+  <p>Parallel instances computed using WGSL compute shader pipeline</p>
+  <canvas id="gpuCanvas" width="800" height="600"></canvas>
+  <script type="module">
+    import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from '../../dist/index.js';
+
+    const engine = new Engine();
+    const particleClip = new Clip('particle_spin')
+      .duration(3000)
+      .easing(Easing.Linear)
+      .iterations(Infinity)
+      .addKeyframe(new Keyframe(0).transform(new TransformBuilder().scale(1).build()))
+      .addKeyframe(new Keyframe(3000).transform(new TransformBuilder().scale(2).build()));
+
+    engine.addClip(particleClip);
+
+    const instances = [];
+    for (let i = 0; i < 10000; i++) {
+      instances.push(new Instance('particle_spin', `p_${i}`).delay(Math.random() * 3000));
+    }
+    engine.addInstances(instances);
+    await engine.prepare();
+
+    console.log(`Created 10,000 instances. Total IR size: ${JSON.stringify(engine.exportIR()).length} bytes.`);
+  </script>
+</body>
+</html>

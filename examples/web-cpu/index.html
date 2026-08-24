@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WebGL Fallback Demo - Keyframe Engine</title>
+  <style>
+    body { margin: 0; background: #1e1e1e; color: #fff; font-family: sans-serif; }
+    canvas { display: block; margin: 20px auto; border: 1px solid #444; }
+    h1 { text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>WebGL Fallback Demo (CPU Evaluated)</h1>
+  <canvas id="canvas" width="800" height="600"></canvas>
+  <script type="module">
+    import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from '../../dist/index.js';
+
+    const canvas = document.getElementById('canvas');
+    const gl = canvas.getContext('webgl');
+
+    const engine = new Engine();
+    const clip = new Clip('bounce')
+      .duration(2000)
+      .easing(Easing.EaseInOut)
+      .iterations(Infinity)
+      .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(-300).translateY(0).build()))
+      .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(300).translateY(200).build()))
+      .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().translateX(-300).translateY(0).build()));
+
+    engine.addClip(clip);
+    engine.addInstances([new Instance('bounce', 'inst1')]);
+    await engine.prepare();
+
+    console.log('Engine initialized with IR:', engine.exportIR());
+  </script>
+</body>
+</html>

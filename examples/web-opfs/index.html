@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OPFS Big Data Loading & Streaming Bake Demo</title>
+  <style>
+    body { margin: 20px; font-family: sans-serif; background: #222; color: #fff; }
+    #log { background: #111; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>OPFS Big Data Loading & Streaming Bake</h1>
+  <div id="log">Initializing OPFS Storage Adapter...</div>
+  <script type="module">
+    import { Engine, Clip, Instance, Keyframe, StorageAdapter } from '../../dist/index.js';
+
+    const logDiv = document.getElementById('log');
+    function log(msg) { logDiv.innerText += '\n' + msg; }
+
+    const adapter = new StorageAdapter();
+    const engine = new Engine();
+
+    log('Building 50,000 instance project IR...');
+    const clip = new Clip('big_clip').duration(5000).addKeyframe(new Keyframe(0)).addKeyframe(new Keyframe(5000));
+    engine.addClip(clip);
+
+    const instances = [];
+    for (let i = 0; i < 50000; i++) {
+      instances.push(new Instance('big_clip', `large_inst_${i}`));
+    }
+    engine.addInstances(instances);
+
+    const ir = engine.exportIR();
+    log('Saving IR to OPFS (or memory fallback)...');
+    await adapter.saveIR('project_50k.json', ir);
+
+    log('Loading IR back from storage...');
+    const loadedIR = await adapter.loadIR('project_50k.json');
+    log(`Successfully loaded project IR with ${loadedIR.instances.length} instances!`);
+  </script>
+</body>
+</html>
