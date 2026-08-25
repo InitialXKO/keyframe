@@ -1,0 +1,253 @@
+# Keyframe Engine
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**Keyframe Engine** 是一个高性能的 3D/2D 关键帧动画引擎，核心由 **Rust + WASM** 打造，结合 **WGSL WebGPU Compute Shader** 并联并行计算，并包含与 **Remotion** 完全兼容的声明式 API 层与 **Chrome DevTools** 扩展支持。
+
+---
+
+## 目录
+
+- [核心特性](#核心特性)
+- [ Monorepo 包结构](#-monorepo-包结构)
+- [ 架构设计与内存布局](#-架构设计与内存布局)
+- [ 快速开始](#-快速开始)
+- [ 示例代码](#-示例代码)
+  - [1. 基础 Builder API](#1-基础-builder-api)
+  - [2. Three.js 适配器 (@keyframe/three)](#2-threejs-适配器-keyframethree)
+  - [3. WebGPU 适配器 (@keyframe/webgpu)](#3-webgpu-适配器-keyframewebgpu)
+  - [4. DOM & CSS 适配器 (@keyframe/dom)](#4-dom--css-适配器-keyframedom)
+  - [5. 播放控制器 (@keyframe/controller)](#5-播放控制器-keyframecontroller)
+  - [6. Remotion 兼容层](#6-remotion-兼容层)
+- [ 开发与测试](#-开发与测试)
+- [ DevTools 扩展与 Starter Kits](#-devtools-扩展与-starter-kits)
+- [ 许可证](#-许可证)
+
+---
+
+## 核心特性
+
+- **Rust WASM 计算内核**: 高吞吐量时间轴平坦化、三次贝塞尔曲线 (Cubic-Bezier) 缓动解算、四元数球面线性插值 (Slerp)、时间重映射 (Time Remapping) 与加性混合 (Additive Blending)。
+- **OPFS 持久化与流式烘焙**: 支持基于 Origin Private File System (OPFS) 的分块流式烘焙与二进制预渲染数据加载。
+- **Zero-Copy ABI 内存布局**: 采用 `#[repr(C, align(16))]` 保证 16 字节对齐与 80 字节固定实例布局 (`INSTANCE_SIZE = 80`)，实现 WASM 至 WebGPU Buffer 内存零拷贝传输。
+- **音频主时钟自适应收敛 (Audio Clock Master)**: `@keyframe/controller` 支持微小漂移 (< ±50ms) 的双循环 timeScale 微调与较大漂移 (> ±100ms) 的硬帧重锁定。
+- **无状态 Credential Token 适配器**: `@keyframe/three` 和 `@keyframe/webgpu` 基于 `AdapterContext` 凭证 Token 实现场景解耦与多场景并行隔离。
+- **拓扑排序与层级级联**: `@keyframe/math` 内置 `HierarchyResolver`，采用 Kahn 算法进行循环依赖检测与父子变换矩阵级联计算。
+- **DOM/CSS 高效绑定**: `@keyframe/dom` 提供 `matrix3d()` 批量 DOM 变换绑定，并带有 >200 元素的性能警告提示。
+- **Remotion 兼容层**: 包含 `spring`、`interpolate`、`interpolateColors`、`Sequence`、`Series` 及 `createRemotionAdapter`，支持无缝迁移 Remotion 动画逻辑。
+- **WGSL Compute Shader**: 提供 `.wgsl` Shader 模板，支持直接在 GPU Compute Pipeline 中并行解算关键帧。
+
+---
+
+## Monorepo 包结构
+
+本项目采用 `pnpm` + `turborepo` Monorepo 架构组织：
+
+| 包名 | 说明 |
+| --- | --- |
+| **`@keyframe/core`** | WASM 内核封装、JS Engine Builder、基础类型定义及 ABI 常量 (`INSTANCE_SIZE = 80`) |
+| **`@keyframe/controller`** | 标准播放控制器 (`AnimationPlayer`)，支持音频主时钟微调与事件分发 |
+| **`@keyframe/three`** | Three.js 绑定适配器，支持 Token 凭证无状态场景同步与栅格化语义控制 |
+| **`@keyframe/webgpu`** | WebGPU Buffer 直写适配器，具备对齐校验、溢出检查与设备丢失感知的三层边界防护 |
+| **`@keyframe/dom`** | DOM & CSS `matrix3d()` 批量绑定适配器，内置 performance guardrail |
+| **`@keyframe/math`** | 层级树矩阵级联计算与拓扑排序工具 (`HierarchyResolver`) |
+
+---
+
+## 架构设计与内存布局
+
+### 1. 固定 80 字节 GPU Instance Layout
+
+Rust 侧数据结构采用 C ABI 与 16 字节对齐：
+
+```rust
+#[repr(C, align(16))]
+pub struct GpuInstanceData {
+    pub transform_matrix: [f32; 16], // 64 bytes (4x4 matrix)
+    pub opacity: f32,                // 4 bytes
+    pub blend_mode: u32,             // 4 bytes
+    pub instance_id: u32,            // 4 bytes
+    pub _padding: u32,               // 4 bytes padding
+}
+```
+
+单个实例精准占用 80 字节，符合 WebGPU Storage Buffer 16 字节对齐标准。
+
+### 2. 3 层 WebGPU 边界防护机制
+
+`@keyframe/webgpu` 在写入 Buffer 时自动校验：
+1. **对齐检查**: 验证 `offset % minStorageBufferOffsetAlignment === 0` (抛出 `TypeError`)。
+2. **溢出检查**: 验证 `offset + size <= buffer.size` (抛出 `RangeError`)。
+3. **设备丢失感知**: 检测 `device.isLost` (抛出 `GPUDeviceLostError`)。
+
+---
+
+## 快速开始
+
+### 安装
+
+```bash
+# 使用 pnpm 安装 Monorepo 依赖
+pnpm add @keyframe/core @keyframe/controller
+```
+
+### 构建项目
+
+```bash
+# 编译 WASM 并构建 TypeScript 产物
+npm run build
+
+# 执行 Rust 与 JS/TS 单元测试
+npm test
+```
+
+---
+
+## 示例代码
+
+### 1. 基础 Builder API
+
+```typescript
+import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder, BlendMode } from "@keyframe/core";
+
+const engine = new Engine();
+
+// 创建关键帧动画剪辑
+const clip = new Clip("bounce_clip")
+  .duration(2000)
+  .easing(Easing.EaseInOut)
+  .addKeyframe(
+    new Keyframe(0)
+      .transform(new TransformBuilder().translateY(0).scale(1).build())
+      .opacity(1)
+  )
+  .addKeyframe(
+    new Keyframe(2000)
+      .transform(new TransformBuilder().translateY(300).scale(1.5).build())
+      .opacity(0.5)
+  );
+
+// 创建动画实例
+const instance = new Instance("bounce_clip", "inst_1")
+  .delay(0)
+  .timeRemappingSpeed(1.2)
+  .blendMode(BlendMode.Additive);
+
+engine.addClip(clip);
+engine.addInstances([instance]);
+
+// 评估全局毫秒时刻的动画帧
+const evaluated = engine.evaluateFrame(500);
+```
+
+---
+
+### 2. Three.js 适配器 (`@keyframe/three`)
+
+```typescript
+import { Engine } from "@keyframe/core";
+import { threeAdapter } from "@keyframe/three";
+import * as THREE from "three";
+
+const engine = new Engine();
+const scene = new THREE.Scene();
+const mesh = new THREE.Mesh(/* ... */);
+scene.add(mesh);
+
+// 注册场景上下文令牌 (Token-based)
+const ctx = threeAdapter.registerScene(scene, engine);
+ctx.registerObject(mesh);
+
+// 在渲染循环中同步矩阵
+function render(timeMs: number) {
+  threeAdapter.applyToScene(ctx, timeMs, { rasterized: false });
+  renderer.render(scene, camera);
+}
+```
+
+---
+
+### 3. WebGPU 适配器 (`@keyframe/webgpu`)
+
+```typescript
+import { webgpuAdapter } from "@keyframe/webgpu";
+
+// 将 WASM 计算得到的 Float32Array 矩阵数据直写至 GPUBuffer
+webgpuAdapter.writeToBuffer(device, gpuBuffer, byteOffset, byteSize);
+```
+
+---
+
+### 4. DOM & CSS 适配器 (`@keyframe/dom`)
+
+```typescript
+import { domAdapter } from "@keyframe/dom";
+
+const elements = Array.from(document.querySelectorAll(".anim-node"));
+
+// 批量格式化并更新 CSS matrix3d
+domAdapter.batchApply(elements, currentTimeMs);
+```
+
+---
+
+### 5. 播放控制器 (`@keyframe/controller`)
+
+```typescript
+import { Engine } from "@keyframe/core";
+import { controller } from "@keyframe/controller";
+
+const engine = new Engine();
+const player = controller.createPlayer(engine, { fps: 60, timeScale: 1.0 });
+
+player.on("frame", (timeMs) => {
+  console.log("Current frame time:", timeMs);
+});
+
+player.play();
+```
+
+---
+
+### 6. Remotion 兼容层
+
+```typescript
+import { spring, interpolate, Sequence, useCurrentFrame } from "@keyframe/core";
+
+// 使用与 Remotion 完全一致的 Hook 与算法函数
+const frame = useCurrentFrame();
+const scale = spring({ frame, fps: 30, config: { damping: 10 } });
+const opacity = interpolate(frame, [0, 30], [0, 1], { extrapolateRight: "clamp" });
+```
+
+---
+
+## 开发与测试
+
+```bash
+# 运行 Rust 核心单元测试
+npm run test:rs
+
+# 运行 JS/TS 接口与适配器集成测试
+npm run test:js
+
+# 运行完整测试套件
+npm test
+```
+
+---
+
+## DevTools 扩展与 Starter Kits
+
+- **Chrome DevTools Extension**: 位于 `devtools/` 目录，包含 Panel 调试面板与后台 Message 监听服务，可实时观察时间轴、实例状态及帧率。
+- **Starter Kits**: 位于 `starter-kits/` 目录：
+  - `starter-kits/web-webgpu`: WebGPU 计算管线模版
+  - `starter-kits/three-js`: Three.js 场景同步模版
+  - `starter-kits/dom-css`: DOM/CSS3D 属性驱动模版
+  - `starter-kits/remotion-compat`: Remotion 代码组件适配模版
+
+---
+
+## 许可证
+
+本项目基于 [MIT License](LICENSE) 开源。
