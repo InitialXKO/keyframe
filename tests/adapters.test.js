@@ -4,6 +4,9 @@ import assert from "node:assert/strict";
 import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from "../dist/index.js";
 import { threeAdapter, AdapterContext } from "../dist/adapters/index.js";
 import { webgpuAdapter, GPUDeviceLostError } from "../dist/adapters/index.js";
+import { domAdapter, DOMAdapter } from "../dist/dom_binder.js";
+import { controller, AnimationPlayer } from "../dist/controller.js";
+import { HierarchyResolver } from "../dist/math/hierarchy.js";
 
 // Helper to mock Three.js Object3D and Matrix4
 function createMockThreeObject(initialPos = { x: 0, y: 0, z: 0 }) {
@@ -101,12 +104,9 @@ test("ThreeAdapter: Token-based dual scene parallel isolation", () => {
 
   assert.ok(evalA.length > 0 && evalB.length > 0);
 
-  // Assert objA received engineA's evaluated matrix
   assert.equal(objA.matrix.elements[12], evalA[0].transformMatrix[12]);
-  // Assert objB received engineB's evaluated matrix
   assert.equal(objB.matrix.elements[12], evalB[0].transformMatrix[12]);
 
-  // Modifying scene A context at time 1000 does not affect scene B
   threeAdapter.applyToScene(ctxA, 1000);
   const evalA1000 = engineA.getEvaluatedInstances(1000);
   assert.equal(objA.matrix.elements[12], evalA1000[0].transformMatrix[12]);
@@ -129,7 +129,6 @@ test("ThreeAdapter: Lifecycle unregisterScene abandoned false vs true", () => {
   assert.equal(obj1.matrixAutoUpdate, false);
   assert.equal(obj2.matrixAutoUpdate, false);
 
-  // Soft restore: abandoned = false
   ctx.unregisterObject(obj1, { abandoned: false });
   assert.equal(obj1.matrixAutoUpdate, true);
   assert.equal(obj1.updateMatrixCalled, true);
@@ -140,7 +139,6 @@ test("ThreeAdapter: Lifecycle unregisterScene abandoned false vs true", () => {
   assert.equal(obj2.updateMatrixCalled, true);
   assert.equal(ctx.registeredObjects.size, 0);
 
-  // Hard abandon: abandoned = true
   const ctx2 = threeAdapter.registerScene(scene, engine);
   const obj3 = createMockThreeObject();
   ctx2.registerObject(obj3);
@@ -163,11 +161,9 @@ test("ThreeAdapter: rasterized precision semantics (true vs false)", () => {
   const obj = createMockThreeObject({ x: 999, y: 999, z: 999 });
   ctx.registerObject(obj);
 
-  // rasterized = true: matrix updated, decompose skipped (position stays stale)
   threeAdapter.applyToScene(ctx, 0, { rasterized: true });
   assert.equal(obj.position.x, 999);
 
-  // rasterized = false: matrix updated AND decomposed to position
   threeAdapter.applyToScene(ctx, 0, { rasterized: false });
   assert.notEqual(obj.position.x, 999);
 });
@@ -226,6 +222,101 @@ test("WebGPUAdapter: Boundary probes (alignment, overflow, device lost)", () => 
     },
     (err) => {
       return err instanceof GPUDeviceLostError && err.name === "GPUDeviceLostError";
+    }
+  );
+});
+
+test("DOMAdapter: batchApply matrix3d formatting & performance guardrail warning", () => {
+  const elements = [];
+  for (let i = 0; i < 205; i++) {
+    elements.push({
+      style: { transform: "" },
+      __transformMatrix: new Float32Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        10 + i, 20, 0, 1
+      ])
+    });
+  }
+
+  let warnCalled = false;
+  let warnMsg = "";
+  const originalWarn = console.warn;
+  console.warn = (msg) => {
+    warnCalled = true;
+    warnMsg = msg;
+  };
+
+  domAdapter.batchApply(elements, 0, { transformPrefix: "translate3d(0,0,0)" });
+  console.warn = originalWarn;
+
+  assert.ok(warnCalled, "Expected console.warn for >200 elements limit");
+  assert.ok(warnMsg.includes("205 elements (>200 limit)"));
+  assert.ok(elements[0].style.transform.includes("matrix3d("));
+  assert.ok(elements[0].style.transform.includes("translate3d(0,0,0)"));
+  assert.ok(elements[0].style.transform.includes("10, 20, 0, 1)"));
+});
+
+test("Controller: Playback state management & frame events", () => {
+  const engine = new Engine();
+  const player = controller.createPlayer(engine, { fps: 60, timeScale: 1.0 });
+
+  assert.equal(player.getIsPlaying(), false);
+  assert.equal(player.getCurrentTime(), 0);
+
+  let frameTriggered = false;
+  player.on("frame", (t) => {
+    frameTriggered = true;
+  });
+
+  player.seek(500);
+  assert.equal(player.getCurrentTime(), 500);
+  assert.equal(frameTriggered, true);
+
+  player.play();
+  assert.equal(player.getIsPlaying(), true);
+
+  player.pause();
+  assert.equal(player.getIsPlaying(), false);
+});
+
+test("HierarchyResolver: Topological sorting, Kahn cycle detection & matrix cascading", () => {
+  const resolver = new HierarchyResolver();
+
+  const mat0 = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    10, 0, 0, 1
+  ]);
+  const mat1 = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    5, 0, 0, 1
+  ]);
+
+  const parentMap = new Map([
+    [1, 0]
+  ]);
+
+  const worldMats = resolver.resolve([mat0, mat1], parentMap);
+  assert.equal(worldMats.length, 2);
+  assert.equal(worldMats[0][12], 10);
+  assert.equal(worldMats[1][12], 15);
+
+  const cycleMap = new Map([
+    [0, 1],
+    [1, 0]
+  ]);
+
+  assert.throws(
+    () => {
+      resolver.resolve([mat0, mat1], cycleMap);
+    },
+    (err) => {
+      return err instanceof Error && err.message.includes("Cycle detected in hierarchy:");
     }
   );
 });
