@@ -68,18 +68,20 @@ function createMockThreeObject(initialPos = { x: 0, y: 0, z: 0 }) {
   };
 }
 
-test("ThreeAdapter: Token-based dual scene parallel isolation", () => {
+test("ThreeAdapter: Token-based dual scene parallel isolation", async () => {
   const engineA = new Engine();
   const clipA = new Clip("cA").duration(1000).addKeyframe(
     new Keyframe(0).transform(new TransformBuilder().translateX(100).build())
   );
   engineA.addClip(clipA).addInstances([new Instance("cA", "instA")]);
+  await engineA.prepare();
 
   const engineB = new Engine();
   const clipB = new Clip("cB").duration(1000).addKeyframe(
     new Keyframe(0).transform(new TransformBuilder().translateX(500).build())
   );
   engineB.addClip(clipB).addInstances([new Instance("cB", "instB")]);
+  await engineB.prepare();
 
   const sceneA = {};
   const sceneB = {};
@@ -149,12 +151,13 @@ test("ThreeAdapter: Lifecycle unregisterScene abandoned false vs true", () => {
   assert.equal(obj3.matrixAutoUpdate, false);
 });
 
-test("ThreeAdapter: rasterized precision semantics (true vs false)", () => {
+test("ThreeAdapter: rasterized precision semantics (true vs false)", async () => {
   const engine = new Engine();
   const clip = new Clip("c1").duration(1000).addKeyframe(
     new Keyframe(0).transform(new TransformBuilder().translateX(200).build())
   );
   engine.addClip(clip).addInstances([new Instance("c1", "inst1")]);
+  await engine.prepare();
 
   const scene = {};
   const ctx = threeAdapter.registerScene(scene, engine);

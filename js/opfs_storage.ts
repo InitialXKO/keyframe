@@ -1,6 +1,8 @@
 export class OPFSStorage {
   private rootPromise: Promise<FileSystemDirectoryHandle> | null = null;
   private memoryFallback: Map<string, Uint8Array> = new Map();
+  private frameIndex: Map<number, any> = new Map();
+  private mounted = false;
 
   constructor() {
     if (typeof navigator !== "undefined" && navigator.storage && navigator.storage.getDirectory) {
@@ -10,6 +12,69 @@ export class OPFSStorage {
 
   public isOPFSSupported(): boolean {
     return this.rootPromise !== null;
+  }
+
+  public isMounted(): boolean {
+    return this.mounted;
+  }
+
+  public async mount(): Promise<boolean> {
+    if (!this.rootPromise) {
+      return false;
+    }
+    try {
+      const root = await this.rootPromise;
+      try {
+        const metaHandle = await root.getFileHandle("cache.meta");
+        const file = await metaHandle.getFile();
+        const buffer = await file.arrayBuffer();
+        const view = new DataView(buffer);
+        // Magic Number check: "KFBA" (0x4B464241) or ABI version check
+        if (buffer.byteLength >= 4) {
+          const magic = view.getUint32(0, true);
+          // If magic number invalid, warn and fail mount
+          if (magic !== 0x4B464241 && magic !== 0x4142464B) {
+            console.warn("OPFS mount failed: cache.meta Magic Number / ABI version mismatch");
+            return false;
+          }
+        }
+      } catch (metaErr) {
+        // cache.meta doesn't exist yet, which is valid for fresh storage
+      }
+      this.mounted = true;
+      return true;
+    } catch (err) {
+      console.warn("OPFS mount failed, falling back to memory mode:", err);
+      this.mounted = false;
+      return false;
+    }
+  }
+
+  public async buildFrameIndex(): Promise<Map<number, any>> {
+    this.frameIndex.clear();
+    if (!this.rootPromise) {
+      return this.frameIndex;
+    }
+    try {
+      const root = await this.rootPromise;
+      for await (const entry of (root as any).values()) {
+        if (entry.kind === "file" && entry.name.endsWith(".bake")) {
+          // Parse timestamp from filename (e.g. frame_1000.bake -> 1000) or file metadata
+          const match = entry.name.match(/(\d+)/);
+          if (match) {
+            const timestamp = parseInt(match[1], 10);
+            this.frameIndex.set(timestamp, entry);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("OPFS buildFrameIndex failed, falling back to memory mode:", err);
+    }
+    return this.frameIndex;
+  }
+
+  public getFrameFromIndex(timestamp: number): any {
+    return this.frameIndex.get(timestamp);
   }
 
   public async appendChunk(filename: string, chunk: Uint8Array): Promise<void> {

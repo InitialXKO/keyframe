@@ -20,7 +20,7 @@ async function initDOMDemo() {
   let elementCount = 50;
   let elements = [];
 
-  function setupElements(count) {
+  async function setupElements(count) {
     container.innerHTML = '';
     elements = [];
     engine.instances = [];
@@ -35,16 +35,16 @@ async function initDOMDemo() {
       instList.push(new Instance('bounce', `box_${i}`).delay(i * 20));
     }
     engine.addInstances(instList);
-    engine.prepare();
+    await engine.prepare();
 
     status.innerText = `Active Elements: ${count}`;
   }
 
-  setupElements(elementCount);
+  await setupElements(elementCount);
 
-  largeBatchBtn.addEventListener('click', () => {
+  largeBatchBtn.addEventListener('click', async () => {
     elementCount = 250;
-    setupElements(elementCount);
+    await setupElements(elementCount);
     console.log("Triggered >200 elements batchApply to test performance guardrail warning.");
   });
 

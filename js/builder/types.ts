@@ -27,12 +27,35 @@ export interface TransformData {
   origin: [number, number, number];
 }
 
+export interface PrepareOptions {
+  wasmUrl?: string;
+  storage?: {
+    enabled?: boolean;
+    preloadHeaders?: boolean;
+  };
+  onProgress?: (stage: string) => void;
+}
+
+export interface SpringConfig {
+  mass?: number;
+  damping?: number;
+  stiffness?: number;
+}
+
+export interface InterpolateConfig {
+  extrapolate?: string;
+  extrapolateLeft?: string;
+  extrapolateRight?: string;
+}
+
 export interface KeyframeData {
   time: number;
   transform: TransformData;
   opacity: number;
   easing: Easing;
   cubic_params?: CubicBezierParams;
+  springConfig?: SpringConfig;
+  interpolateConfig?: InterpolateConfig;
 }
 
 export interface AnimationClipData {

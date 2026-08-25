@@ -6,7 +6,7 @@ import { spring, interpolate, interpolateColors, Sequence, Series, createRemotio
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
-test("JS Fallback: Evaluates clip keyframes accurately without WASM instance (Issue #2 reproduction)", () => {
+test("JS Fallback: Evaluates clip keyframes accurately without WASM instance (Issue #2 reproduction)", async () => {
   const engine = new Engine(); // No wasmInstance
   const clip = new Clip("test")
     .duration(2000)
@@ -14,7 +14,7 @@ test("JS Fallback: Evaluates clip keyframes accurately without WASM instance (Is
     .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().translateX(500).build()));
   engine.addClip(clip);
   engine.addInstances([new Instance("test", "i1")]);
-  engine.prepare();
+  await engine.prepare();
 
   const e = engine.getEvaluatedInstances(1000)[0];
   // Expected tx = 250 (linear interpolation halfway through 2000ms duration)
@@ -24,7 +24,7 @@ test("JS Fallback: Evaluates clip keyframes accurately without WASM instance (Is
   assert.equal(e.visible, true);
 });
 
-test("JS Fallback: Supports Additive BlendMode, delay, time remapping, and initial transform", () => {
+test("JS Fallback: Supports Additive BlendMode, delay, time remapping, and initial transform", async () => {
   const engine = new Engine();
   const clip = new Clip("clip1")
     .duration(1000)
@@ -39,6 +39,7 @@ test("JS Fallback: Supports Additive BlendMode, delay, time remapping, and initi
 
   engine.addClip(clip);
   engine.addInstances([inst]);
+  await engine.prepare();
 
   // Before delay (at t=100ms)
   const evalBeforeDelay = engine.getEvaluatedInstances(100)[0];
@@ -167,16 +168,18 @@ test("Canvas2DRenderer & AutoRenderer createRenderer fallback", async () => {
   const clip = new Clip("c1").duration(1000);
   engine.addClip(clip);
   engine.addInstances([new Instance("c1", "inst1")]);
+  await engine.prepare();
 
   renderer.render(engine, 500);
   renderer.destroy();
 });
 
-test("Engine DevTools messaging integration", () => {
+test("Engine DevTools messaging integration", async () => {
   const engine = new Engine();
   const clip = new Clip("c1").duration(1000);
   engine.addClip(clip);
   engine.addInstances([new Instance("c1", "inst1")]);
+  await engine.prepare();
 
   let postedMessage = null;
   globalThis.window = {
@@ -202,6 +205,7 @@ test("StorageAdapter bakeStreamToOPFS chunked streaming bake", async () => {
   const clip = new Clip("c1").duration(2000);
   engine.addClip(clip);
   engine.addInstances([new Instance("c1", "inst1")]);
+  await engine.prepare();
 
   let progressReported = [];
   await adapter.bakeStreamToOPFS(engine, "stream_test.bin", {
@@ -218,7 +222,7 @@ test("StorageAdapter bakeStreamToOPFS chunked streaming bake", async () => {
   assert.equal(progressReported[progressReported.length - 1], 100);
 });
 
-test("Engine WASM Memory binding, auto-resolution, and error handling", () => {
+test("Engine WASM Memory binding, auto-resolution, and error handling", async () => {
   delete (globalThis).wasmMemory;
 
   // Mock WASM instance without memory initially
@@ -228,9 +232,11 @@ test("Engine WASM Memory binding, auto-resolution, and error handling", () => {
     evaluate_frame: () => 1,
     get_instance_buffer_ptr: () => 0,
     get_instance_buffer_byte_length: () => 80,
+    prepare: () => {},
   };
 
   const engine = new Engine(fakeWasm);
+  await engine.prepare();
 
   // 1. Should throw ReferenceError when WASM instance exists but memory is unaccessible
   assert.throws(() => {
@@ -263,6 +269,57 @@ test("Engine WASM Memory binding, auto-resolution, and error handling", () => {
   // 5. Fallback JS evaluation when no WASM instance is provided
   const jsEngine = new Engine();
   jsEngine.addInstances([new Instance("c1", "inst1")]);
+  await jsEngine.prepare();
   const jsList = jsEngine.getEvaluatedInstances(0);
   assert.equal(jsList.length, 1);
+});
+
+test("Engine.prepare() compatibility validation and unprepared guardrail", async () => {
+  // Unprepared engine should throw Error("Engine not prepared") on evaluateFrame
+  const engine = new Engine();
+  assert.throws(() => {
+    engine.evaluateFrame(0);
+  }, /Engine not prepared/);
+
+  // Validation 1: mass !== 1.0 throws error
+  const massEngine = new Engine();
+  const badMassClip = new Clip("bad_mass")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).springConfig({ mass: 2.0 }));
+  massEngine.addClip(badMassClip);
+
+  await assert.rejects(async () => {
+    await massEngine.prepare();
+  }, (err) => {
+    assert.match(err.message, /Clip "bad_mass" keyframe at t=0 uses spring mass=2\.0, but WASM core only supports mass=1\.0\. To fix, choose one: → Set mass to 1\.0 → Use @keyframe\/bake to pre-bake this clip → Use @keyframe\/physics for real-time spring/);
+    return true;
+  });
+
+  // Validation 2: extrapolate option throws error
+  const extrapolateEngine = new Engine();
+  const badExtrapolateClip = new Clip("bad_extrapolate")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).interpolateConfig({ extrapolate: "extend" }));
+  extrapolateEngine.addClip(badExtrapolateClip);
+
+  await assert.rejects(async () => {
+    await extrapolateEngine.prepare();
+  }, (err) => {
+    assert.match(err.message, /Clip "bad_extrapolate" keyframe at t=0 uses extrapolate, but WASM core does not support extrapolate\. To fix, choose one: → Remove extrapolate and clamp input manually → Use @keyframe\/bake to pre-bake this clip/);
+    return true;
+  });
+
+  // Successful prepare with mock WASM or JS fallback
+  const validEngine = new Engine();
+  let stages = [];
+  await validEngine.prepare({
+    wasmUrl: "invalid-url-force-error",
+    storage: { enabled: false },
+    onProgress: (stage) => stages.push(stage),
+  }).catch(() => {
+    // If wasm fetch fails on invalid url, stages recorded validation & wasm_loading
+  });
+
+  assert.ok(stages.includes("validation"));
+  assert.ok(stages.includes("wasm_loading"));
 });
