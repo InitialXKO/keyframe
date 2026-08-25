@@ -8,6 +8,7 @@ mod unit_tests {
         AnimationClipData, BlendMode, EasingType, InstanceData, KeyframeData, TimelineNode,
         TransformData,
     };
+    use std::time::Instant;
 
     #[test]
     fn test_cubic_bezier_solving() {
@@ -94,7 +95,7 @@ mod unit_tests {
             visible: true,
             delay: 0.0,
             duration_scale: 1.0,
-            time_remapping_speed: 2.0, // 2x speed
+            time_remapping_speed: 2.0,
             blend_mode: BlendMode::Additive,
             initial_transform: TransformData::default(),
         };
@@ -102,17 +103,16 @@ mod unit_tests {
 
         let gpu_instances = engine.evaluate_frame(250.0);
         assert_eq!(gpu_instances.len(), 1);
-        // At t=250ms with 2x speed, local_time = 500ms -> translation x should be 50.0
         assert!((gpu_instances[0].transform_matrix[12] - 50.0).abs() < 0.1);
     }
 
     #[test]
-    fn test_bake_range() {
+    fn test_bake_range_benchmark() {
         let mut engine = EngineState::new();
         let clip_data = AnimationClipData {
-            id: "clip1".to_string(),
-            duration: 1000.0,
-            easing: EasingType::Linear,
+            id: "particle_clip".to_string(),
+            duration: 2000.0,
+            easing: EasingType::EaseInOut,
             iterations: 1.0,
             keyframes: vec![
                 KeyframeData {
@@ -123,12 +123,12 @@ mod unit_tests {
                     cubic_params: None,
                 },
                 KeyframeData {
-                    time: 1000.0,
+                    time: 2000.0,
                     transform: TransformData {
-                        translation: [100.0, 0.0, 0.0],
+                        translation: [500.0, 300.0, 0.0],
                         ..Default::default()
                     },
-                    opacity: 0.5,
+                    opacity: 0.0,
                     easing: EasingType::Linear,
                     cubic_params: None,
                 },
@@ -136,20 +136,26 @@ mod unit_tests {
         };
         engine.add_clip(clip_data).unwrap();
 
-        let inst_data = InstanceData {
-            id: "inst1".to_string(),
-            clip_id: "clip1".to_string(),
-            opacity: 1.0,
-            visible: true,
-            delay: 0.0,
-            duration_scale: 1.0,
-            time_remapping_speed: 1.0,
-            blend_mode: BlendMode::Override,
-            initial_transform: TransformData::default(),
-        };
-        engine.add_instance(inst_data).unwrap();
+        for i in 0..1000 {
+            let inst_data = InstanceData {
+                id: format!("p_{}", i),
+                clip_id: "particle_clip".to_string(),
+                opacity: 1.0,
+                visible: true,
+                delay: (i as f64) * 0.5,
+                duration_scale: 1.0,
+                time_remapping_speed: 1.0,
+                blend_mode: BlendMode::Override,
+                initial_transform: TransformData::default(),
+            };
+            engine.add_instance(inst_data).unwrap();
+        }
 
-        let baked_bytes = engine.bake_range(0.0, 1000.0, 10.0);
+        let start_time = Instant::now();
+        let baked_bytes = engine.bake_range(0.0, 2000.0, 30.0);
+        let elapsed = start_time.elapsed();
+
+        println!("Bake Benchmark: 1000 instances over 60 frames took {:?}", elapsed);
         assert!(!baked_bytes.is_empty());
     }
 
