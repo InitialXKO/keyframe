@@ -130,6 +130,10 @@ impl KeyframeEngine {
             .as_ptr()
     }
 
+    pub fn instance_size(&self) -> usize {
+        types::INSTANCE_SIZE
+    }
+
     pub fn get_instance_buffer_byte_length(&self) -> usize {
         gpu_exporter::GpuExporter::get_instance_buffer_bytes(&self.inner.evaluated_gpu_instances)
             .len()
