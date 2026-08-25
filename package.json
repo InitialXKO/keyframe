@@ -18,21 +18,36 @@
     "./webgpu": {
       "import": "./dist/adapters/webgpu_adapter.js",
       "types": "./dist/adapters/webgpu_adapter.d.ts"
+    },
+    "./dom": {
+      "import": "./dist/dom_binder.js",
+      "types": "./dist/dom_binder.d.ts"
+    },
+    "./controller": {
+      "import": "./dist/controller.js",
+      "types": "./dist/controller.d.ts"
+    },
+    "./math": {
+      "import": "./dist/math/hierarchy.js",
+      "types": "./dist/math/hierarchy.d.ts"
     }
   },
   "scripts": {
     "build:wasm": "wasm-pack build --target web --out-dir pkg",
     "build:ts": "tsc",
     "build": "npm run build:wasm && npm run build:ts",
-    "publish:monorepo": "pnpm publish --filter @keyframe/core && pnpm publish --filter @keyframe/three && pnpm publish --filter @keyframe/webgpu",
+    "publish:monorepo": "pnpm publish --filter @keyframe/core && pnpm publish --filter @keyframe/controller && pnpm publish --filter @keyframe/three && pnpm publish --filter @keyframe/webgpu && pnpm publish --filter @keyframe/dom && pnpm publish --filter @keyframe/math",
     "test:rs": "cargo test",
     "test:js": "node --test tests/**/*.test.js tests/**/*.test.mjs 2>/dev/null || node --test",
     "test": "npm run test:rs && npm run test:js"
   },
   "overrides": {
     "@keyframe/core": "^1.0.0",
+    "@keyframe/controller": "^1.0.0",
     "@keyframe/three": "^1.0.0",
-    "@keyframe/webgpu": "^1.0.0"
+    "@keyframe/webgpu": "^1.0.0",
+    "@keyframe/dom": "^1.0.0",
+    "@keyframe/math": "^1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

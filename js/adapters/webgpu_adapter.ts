@@ -27,7 +27,12 @@ export class WebGPUAdapter {
     if (!device) {
       throw new GPUDeviceLostError("GPUDevice is null or undefined.");
     }
-    if (device.isLost === true || device.__isDeviceLost === true) {
+    if (
+      device.isLost === true ||
+      device.lost === true ||
+      device.__isDeviceLost === true ||
+      (device.lost && typeof device.lost === "object" && device.lost.__isLost === true)
+    ) {
       throw new GPUDeviceLostError("GPUDevice is lost. Buffer write aborted.");
     }
 

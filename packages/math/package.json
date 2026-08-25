@@ -1,0 +1,15 @@
+{
+  "name": "@keyframe/math",
+  "version": "1.0.0",
+  "description": "@keyframe/math — Hierarchy Resolver & Matrix Cascading Math Tools",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "peerDependencies": {
+    "@keyframe/core": "^1.0.0"
+  }
+}
