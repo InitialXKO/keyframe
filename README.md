@@ -143,15 +143,15 @@ import { Clip, Keyframe, TransformBuilder, Instance, Engine, Easing, BlendMode }
 
 // 1. 构建变换与关键帧
 const initialTransform = new TransformBuilder()
-  .position([0, 0, 0])
-  .rotation([0, 0, 0])
-  .scale([1, 1, 1])
+  .translate(0, 0, 0)
+  .rotationQuat(0, 0, 0, 1)
+  .scale(1, 1, 1)
   .build();
 
 const targetTransform = new TransformBuilder()
-  .position([100, 50, 0])
-  .rotation([0, 0, 45])
-  .scale([2, 2, 1])
+  .translate(100, 50, 0)
+  .rotationQuat(0, 0, 0.3826, 0.9238) // 四元数旋转
+  .scale(2, 2, 1)
   .build();
 
 const kf1 = new Keyframe(0)
@@ -251,14 +251,21 @@ adapter.evaluateFrame(30, 30); // 评估第 30 帧 (1000ms)
 2. **内存布局与 Buffer 直接写入**：
 
 ```typescript
-import { WebGPUAdapter } from "keyframe-engine";
+import { webgpuAdapter, threeAdapter, Engine } from "keyframe-engine";
 
-// 使用 WebGPUAdapter 绑定引擎与 WebGPU Storage Buffer
-const adapter = new WebGPUAdapter(device);
-const context = adapter.createContext(gpuBuffer);
+const engine = new Engine();
 
-// 将 WASM 实例求值数据高效写入 WebGPU 缓冲区
-adapter.updateBuffer(context, wasmEngine);
+// --- Three.js 适配示例 ---
+// 1. 注册 Three.js Scene 与 Engine
+const threeCtx = threeAdapter.registerScene(threeScene, engine, { defaultRasterized: false });
+// 2. 挂载 Mesh / Object3D 对象
+threeCtx.registerObject(mesh1);
+// 3. 将指定帧矩阵平滑同步至 Three.js Object3D 场景树
+threeAdapter.applyToScene(threeCtx, 1000);
+
+// --- WebGPU 直写示例 ---
+// 直接将求值数据/矩阵零拷贝写入 WebGPU Storage Buffer
+webgpuAdapter.writeToBuffer(device, gpuBuffer, 1000, 0, { engine });
 ```
 
 ---
