@@ -6,13 +6,33 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./three": {
+      "import": "./dist/adapters/three_adapter.js",
+      "types": "./dist/adapters/three_adapter.d.ts"
+    },
+    "./webgpu": {
+      "import": "./dist/adapters/webgpu_adapter.js",
+      "types": "./dist/adapters/webgpu_adapter.d.ts"
+    }
+  },
   "scripts": {
     "build:wasm": "wasm-pack build --target web --out-dir pkg",
     "build:ts": "tsc",
     "build": "npm run build:wasm && npm run build:ts",
+    "publish:monorepo": "pnpm publish --filter @keyframe/core && pnpm publish --filter @keyframe/three && pnpm publish --filter @keyframe/webgpu",
     "test:rs": "cargo test",
     "test:js": "node --test tests/**/*.test.js tests/**/*.test.mjs 2>/dev/null || node --test",
-    "test": "npm run test:rs"
+    "test": "npm run test:rs && npm run test:js"
+  },
+  "overrides": {
+    "@keyframe/core": "^1.0.0",
+    "@keyframe/three": "^1.0.0",
+    "@keyframe/webgpu": "^1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

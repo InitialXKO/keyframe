@@ -1,0 +1,16 @@
+{
+  "name": "@keyframe/three",
+  "version": "1.0.0",
+  "description": "@keyframe/three — Three.js Binding Adapter",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "peerDependencies": {
+    "@keyframe/core": "^1.0.0",
+    "three": "^0.150.0"
+  }
+}

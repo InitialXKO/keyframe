@@ -10,6 +10,64 @@ mod unit_tests {
     };
     use std::time::Instant;
 
+    use keyframe_engine::transform::transform_to_matrix;
+    use keyframe_engine::types::GpuInstanceData;
+    use std::mem::{align_of, size_of};
+
+    #[test]
+    fn test_gpu_instance_data_layout_and_alignment() {
+        assert_eq!(size_of::<GpuInstanceData>(), 80);
+        assert_eq!(align_of::<GpuInstanceData>(), 16);
+    }
+
+    #[test]
+    fn test_rotate_x_90_snapshot() {
+        let t = TransformData {
+            rotation_quat: [0.70710678, 0.0, 0.0, 0.70710678],
+            ..Default::default()
+        };
+        let mat = transform_to_matrix(&t);
+        let cols = mat.to_cols_array();
+        // Column-major order: index 6 corresponds to column 1, row 2 (m21)
+        assert!(
+            (cols[6] - 1.0).abs() < 1e-4,
+            "Expected m21 (cols[6]) == 1.0 for 90° X-axis rotation, got {}",
+            cols[6]
+        );
+    }
+
+    #[test]
+    fn test_rotate_z_45_snapshot() {
+        let t = TransformData {
+            rotation_quat: [0.0, 0.0, 0.38268343, 0.92387953],
+            ..Default::default()
+        };
+        let mat = transform_to_matrix(&t);
+        let cols = mat.to_cols_array();
+        let expected_cos = 0.70710678;
+        let expected_sin = 0.70710678;
+
+        assert!((cols[0] - expected_cos).abs() < 1e-4); // m00
+        assert!((cols[1] - expected_sin).abs() < 1e-4); // m10
+        assert!((cols[4] - (-expected_sin)).abs() < 1e-4); // m01
+        assert!((cols[5] - expected_cos).abs() < 1e-4); // m11
+    }
+
+    #[test]
+    fn test_scale_2_05_1_snapshot() {
+        let t = TransformData {
+            scale: [2.0, 0.5, 1.0],
+            ..Default::default()
+        };
+        let mat = transform_to_matrix(&t);
+        let cols = mat.to_cols_array();
+
+        assert!((cols[0] - 2.0).abs() < 1e-6);
+        assert!((cols[5] - 0.5).abs() < 1e-6);
+        assert!((cols[10] - 1.0).abs() < 1e-6);
+        assert!((cols[15] - 1.0).abs() < 1e-6);
+    }
+
     #[test]
     fn test_cubic_bezier_solving() {
         let res_start = solve_cubic_bezier(0.25, 0.1, 0.25, 1.0, 0.0);
