@@ -1,4 +1,5 @@
 use crate::clip::AnimationClip;
+use crate::gpu_exporter::GpuExporter;
 use crate::instance::Instance;
 use crate::storage::HybridStorage;
 use crate::timeline::TimelineManager;
@@ -90,7 +91,6 @@ impl EngineState {
             if let Some(clip) = self.clips.get(&inst.data.clip_id) {
                 let clip_idx = *self.clip_index_map.get(&inst.data.clip_id).unwrap_or(&0);
 
-                // If instance is scheduled via timeline tree, add absolute start time to delay
                 let mut inst_to_eval = inst.clone();
                 if let Some(&timeline_start) = scheduled_map.get(&inst.data.id) {
                     inst_to_eval.data.delay += timeline_start;
@@ -102,6 +102,24 @@ impl EngineState {
         }
 
         &self.evaluated_gpu_instances
+    }
+
+    pub fn bake_range(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
+        if !self.prepared {
+            let _ = self.prepare();
+        }
+        let frame_duration = 1000.0 / fps.max(1.0);
+        let mut total_bytes = Vec::new();
+
+        let mut current_time = start_ms;
+        while current_time <= end_ms {
+            let frame_instances = self.evaluate_frame(current_time);
+            let bytes = GpuExporter::get_instance_buffer_bytes(frame_instances);
+            total_bytes.extend_from_slice(bytes);
+            current_time += frame_duration;
+        }
+
+        total_bytes
     }
 
     pub fn export_ir(&self) -> EngineIR {

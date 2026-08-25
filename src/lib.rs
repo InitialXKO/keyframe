@@ -64,6 +64,27 @@ impl KeyframeEngine {
         output_range[last_idx]
     }
 
+    pub fn interpolate_path_3d(
+        &self,
+        p0: &[f32],
+        p1: &[f32],
+        p2: &[f32],
+        p3: &[f32],
+        t: f32,
+    ) -> Vec<f32> {
+        if p0.len() < 3 || p1.len() < 3 || p2.len() < 3 || p3.len() < 3 {
+            return vec![0.0, 0.0, 0.0];
+        }
+        let arr = interpolator::interpolate_cubic_bezier_path_3d(
+            [p0[0], p0[1], p0[2]],
+            [p1[0], p1[1], p1[2]],
+            [p2[0], p2[1], p2[2]],
+            [p3[0], p3[1], p3[2]],
+            t,
+        );
+        arr.to_vec()
+    }
+
     pub fn add_clip_json(&mut self, clip_json: &str) -> Result<(), JsValue> {
         let clip_data: AnimationClipData = serde_json::from_str(clip_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid clip JSON: {}", e)))?;
@@ -94,6 +115,10 @@ impl KeyframeEngine {
     pub fn evaluate_frame(&mut self, global_time: f64) -> usize {
         let instances = self.inner.evaluate_frame(global_time);
         instances.len()
+    }
+
+    pub fn bake_range(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
+        self.inner.bake_range(start_ms, end_ms, fps)
     }
 
     pub fn get_instance_buffer_ptr(&self) -> *const u8 {

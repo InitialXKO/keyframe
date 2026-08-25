@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from "../dist/builder/index.js";
-import { spring, interpolate, Sequence, Series, setRemotionFrameContext, useCurrentFrame } from "../dist/remotion/index.js";
+import { spring, interpolate, interpolateColors, Sequence, Series, setRemotionFrameContext, useCurrentFrame } from "../dist/remotion/index.js";
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
@@ -40,7 +40,7 @@ test("Builder API constructs valid Clip and Instance IR with Infinity iterations
   assert.equal(ir.instances[0].delay, 100);
 });
 
-test("Remotion spring & interpolate math", () => {
+test("Remotion spring, interpolate & interpolateColors math", () => {
   const valStart = spring({ frame: 0, fps: 30 });
   const valMid = spring({ frame: 15, fps: 30 });
   assert.equal(valStart, 0);
@@ -48,6 +48,9 @@ test("Remotion spring & interpolate math", () => {
 
   const interp = interpolate(50, [0, 100], [0, 500], { extrapolateLeft: "clamp" });
   assert.equal(interp, 250);
+
+  const colorHex = interpolateColors(50, [0, 100], ["#ff0000", "#00ff00"]);
+  assert.ok(colorHex.includes("rgba(128, 128, 0"));
 });
 
 test("Remotion Sequence & Series context propagation", () => {
@@ -66,12 +69,12 @@ test("Remotion Sequence & Series context propagation", () => {
   assert.equal(evaluatedValue, 20);
 });
 
-test("OPFS Storage & StorageAdapter memory fallback", async () => {
+test("OPFS Storage & StorageAdapter bake bytes persistence", async () => {
   const adapter = new StorageAdapter();
-  const testData = { hello: "world", count: 42 };
+  const bakeBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
 
-  await adapter.saveIR("test_key.json", testData);
-  const loaded = await adapter.loadIR("test_key.json");
+  await adapter.saveBakeData("bake_1.bin", bakeBytes);
+  const loadedBytes = await adapter.loadBakeData("bake_1.bin");
 
-  assert.deepEqual(loaded, testData);
+  assert.deepEqual(loadedBytes, bakeBytes);
 });

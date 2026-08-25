@@ -16,4 +16,12 @@ export class StorageAdapter {
     const jsonStr = decoder.decode(bytes);
     return JSON.parse(jsonStr);
   }
+
+  public async saveBakeData(key: string, bakeBytes: Uint8Array): Promise<void> {
+    await this.opfs.write(key, bakeBytes);
+  }
+
+  public async loadBakeData(key: string): Promise<Uint8Array> {
+    return await this.opfs.read(key);
+  }
 }

@@ -2,13 +2,11 @@
 mod unit_tests {
     use keyframe_engine::easing::{solve_cubic_bezier, solve_spring};
     use keyframe_engine::engine::EngineState;
-    use keyframe_engine::interpolator::slerp_quaternions;
+    use keyframe_engine::interpolator::{interpolate_cubic_bezier_path_3d, slerp_quaternions};
     use keyframe_engine::timeline::TimelineManager;
-
     use keyframe_engine::types::{
-        AnimationClipData, EasingType, KeyframeData, TimelineNode, TransformData,
+        AnimationClipData, EasingType, InstanceData, KeyframeData, TimelineNode, TransformData,
     };
-
 
     #[test]
     fn test_cubic_bezier_solving() {
@@ -42,44 +40,24 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_timeline_flattening() {
-        let root = TimelineNode {
-            id: "root".to_string(),
-            instance_id: None,
-            start_time: 0.0,
-            duration: 1000.0,
-            is_parallel: false, // Serial
-            children: vec![
-                TimelineNode {
-                    id: "child1".to_string(),
-                    instance_id: Some("inst1".to_string()),
-                    start_time: 0.0,
-                    duration: 200.0,
-                    children: vec![],
-                    is_parallel: true,
-                },
-                TimelineNode {
-                    id: "child2".to_string(),
-                    instance_id: Some("inst2".to_string()),
-                    start_time: 0.0,
-                    duration: 300.0,
-                    children: vec![],
-                    is_parallel: true,
-                },
-            ],
-        };
+    fn test_bezier_path_3d() {
+        let p0 = [0.0, 0.0, 0.0];
+        let p1 = [0.0, 10.0, 0.0];
+        let p2 = [10.0, 10.0, 0.0];
+        let p3 = [10.0, 0.0, 0.0];
 
-        let tm = TimelineManager::new(Some(root));
-        let flattened = tm.flatten();
-        assert_eq!(flattened.len(), 2);
-        assert_eq!(flattened[0].instance_id, "inst1");
-        assert_eq!(flattened[0].absolute_start_time, 0.0);
-        assert_eq!(flattened[1].instance_id, "inst2");
-        assert_eq!(flattened[1].absolute_start_time, 200.0);
+        let start = interpolate_cubic_bezier_path_3d(p0, p1, p2, p3, 0.0);
+        let end = interpolate_cubic_bezier_path_3d(p0, p1, p2, p3, 1.0);
+        let mid = interpolate_cubic_bezier_path_3d(p0, p1, p2, p3, 0.5);
+
+        assert_eq!(start, [0.0, 0.0, 0.0]);
+        assert_eq!(end, [10.0, 0.0, 0.0]);
+        assert_eq!(mid[0], 5.0);
+        assert_eq!(mid[1], 7.5);
     }
 
     #[test]
-    fn test_verify_matrices() {
+    fn test_bake_range() {
         let mut engine = EngineState::new();
         let clip_data = AnimationClipData {
             id: "clip1".to_string(),
@@ -107,9 +85,56 @@ mod unit_tests {
             ],
         };
         engine.add_clip(clip_data).unwrap();
-        engine.prepare().unwrap();
 
-        let evaluated = engine.evaluate_frame(500.0);
-        assert_eq!(evaluated.len(), 0); // No instances added yet
+        let inst_data = InstanceData {
+            id: "inst1".to_string(),
+            clip_id: "clip1".to_string(),
+            opacity: 1.0,
+            visible: true,
+            delay: 0.0,
+            duration_scale: 1.0,
+            initial_transform: TransformData::default(),
+        };
+        engine.add_instance(inst_data).unwrap();
+
+        let baked_bytes = engine.bake_range(0.0, 1000.0, 10.0);
+        assert!(!baked_bytes.is_empty());
+    }
+
+    #[test]
+    fn test_timeline_flattening() {
+        let root = TimelineNode {
+            id: "root".to_string(),
+            instance_id: None,
+            start_time: 0.0,
+            duration: 1000.0,
+            is_parallel: false,
+            children: vec![
+                TimelineNode {
+                    id: "child1".to_string(),
+                    instance_id: Some("inst1".to_string()),
+                    start_time: 0.0,
+                    duration: 200.0,
+                    children: vec![],
+                    is_parallel: true,
+                },
+                TimelineNode {
+                    id: "child2".to_string(),
+                    instance_id: Some("inst2".to_string()),
+                    start_time: 0.0,
+                    duration: 300.0,
+                    children: vec![],
+                    is_parallel: true,
+                },
+            ],
+        };
+
+        let tm = TimelineManager::new(Some(root));
+        let flattened = tm.flatten();
+        assert_eq!(flattened.len(), 2);
+        assert_eq!(flattened[0].instance_id, "inst1");
+        assert_eq!(flattened[0].absolute_start_time, 0.0);
+        assert_eq!(flattened[1].instance_id, "inst2");
+        assert_eq!(flattened[1].absolute_start_time, 200.0);
     }
 }

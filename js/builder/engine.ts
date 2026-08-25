@@ -60,6 +60,13 @@ export class Engine {
     return { count: this.instances.length };
   }
 
+  public bakeRange(startMs: number, endMs: number, fps = 30): Uint8Array {
+    if (this.wasmInstance && this.wasmInstance.bake_range) {
+      return this.wasmInstance.bake_range(startMs, endMs, fps);
+    }
+    return new Uint8Array(0);
+  }
+
   public exportIR(): EngineIR {
     return {
       clips: Array.from(this.clips.values()),
