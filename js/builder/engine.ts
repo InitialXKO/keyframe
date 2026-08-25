@@ -14,10 +14,56 @@ export class Engine {
 
   constructor(wasmInstance?: any) {
     this.wasmInstance = wasmInstance;
+    this.autoBindWasmMemory();
   }
 
   public setWasmInstance(wasm: any): void {
     this.wasmInstance = wasm;
+    this.autoBindWasmMemory();
+  }
+
+  public bindWasmMemory(memory: any): this {
+    const mem = this.resolveMemory(memory);
+    if (this.wasmInstance) {
+      this.wasmInstance.memory = mem;
+    }
+    (globalThis as any).wasmMemory = mem;
+    return this;
+  }
+
+  public setWasmMemory(memory: any): this {
+    return this.bindWasmMemory(memory);
+  }
+
+  public static bindWasmMemory(memory: any): void {
+    const mem = memory?.buffer ? memory : (memory?.memory || memory);
+    (globalThis as any).wasmMemory = mem;
+  }
+
+  private resolveMemory(mem: any): any {
+    if (!mem) return null;
+    if (mem.buffer) return mem;
+    if (mem.memory?.buffer) return mem.memory;
+    if (mem.__wasm?.memory?.buffer) return mem.__wasm.memory;
+    return null;
+  }
+
+  private autoBindWasmMemory(): void {
+    if (!this.wasmInstance) return;
+
+    if (!this.wasmInstance.memory) {
+      const resolved =
+        this.resolveMemory(this.wasmInstance) ||
+        this.resolveMemory((globalThis as any).wasmMemory);
+
+      if (resolved) {
+        this.wasmInstance.memory = resolved;
+      }
+    }
+
+    if (this.wasmInstance.memory && !(globalThis as any).wasmMemory) {
+      (globalThis as any).wasmMemory = this.wasmInstance.memory;
+    }
   }
 
   public enableDevTools(): void {
@@ -88,34 +134,40 @@ export class Engine {
     const evalResult = skipEvaluate ? { count: this.instances.length } : this.evaluateFrame(globalTime);
     const result: EvaluatedInstance[] = [];
 
-    if (
-      this.wasmInstance &&
-      evalResult.ptr &&
-      evalResult.len > 0 &&
-      (this.wasmInstance.memory || (globalThis as any).wasmMemory)
-    ) {
-      const memoryBuffer: ArrayBuffer = (this.wasmInstance.memory || (globalThis as any).wasmMemory).buffer;
-      const count = evalResult.count;
-      const floatsPerInst = 20;
-      const floatView = new Float32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
-      const uintView = new Uint32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
+    if (this.wasmInstance) {
+      this.autoBindWasmMemory();
+      const memory = this.wasmInstance.memory ?? (globalThis as any).wasmMemory ?? this.wasmInstance.__wasm?.memory;
+      if (!memory || !memory.buffer) {
+        throw new ReferenceError(
+          "WASM memory not bound. Call Engine.bindWasmMemory(memory) first, " +
+          "or set globalThis.wasmMemory = wasmExports.memory after initSync()."
+        );
+      }
 
-      for (let i = 0; i < count; i++) {
-        const offset = i * floatsPerInst;
-        const transformMatrix = floatView.slice(offset, offset + 16);
-        const opacity = floatView[offset + 16];
-        const visible = uintView[offset + 17] === 1;
-        const clipIndex = uintView[offset + 18];
-        const instData = this.instances[i];
+      if (evalResult.ptr != null && evalResult.len > 0) {
+        const memoryBuffer: ArrayBuffer = memory.buffer;
+        const count = evalResult.count;
+        const floatsPerInst = 20;
+        const floatView = new Float32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
+        const uintView = new Uint32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
 
-        result.push({
-          id: instData?.id,
-          clipId: instData?.clip_id,
-          transformMatrix,
-          opacity,
-          visible,
-          clipIndex,
-        });
+        for (let i = 0; i < count; i++) {
+          const offset = i * floatsPerInst;
+          const transformMatrix = floatView.slice(offset, offset + 16);
+          const opacity = floatView[offset + 16];
+          const visible = uintView[offset + 17] === 1;
+          const clipIndex = uintView[offset + 18];
+          const instData = this.instances[i];
+
+          result.push({
+            id: instData?.id,
+            clipId: instData?.clip_id,
+            transformMatrix,
+            opacity,
+            visible,
+            clipIndex,
+          });
+        }
       }
     } else {
       // Fallback JS evaluation if WASM buffer is not accessible directly

@@ -169,3 +169,52 @@ test("StorageAdapter bakeStreamToOPFS chunked streaming bake", async () => {
   assert.ok(progressReported.length > 0);
   assert.equal(progressReported[progressReported.length - 1], 100);
 });
+
+test("Engine WASM Memory binding, auto-resolution, and error handling", () => {
+  delete (globalThis).wasmMemory;
+
+  // Mock WASM instance without memory initially
+  const fakeWasm = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 1,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => 80,
+  };
+
+  const engine = new Engine(fakeWasm);
+
+  // 1. Should throw ReferenceError when WASM instance exists but memory is unaccessible
+  assert.throws(() => {
+    engine.getEvaluatedInstances(0);
+  }, ReferenceError);
+
+  // 2. Auto-resolution via __wasm.memory
+  const mockMemory = new WebAssembly.Memory({ initial: 1 });
+  fakeWasm.__wasm = { memory: mockMemory };
+  // getEvaluatedInstances should auto-bind memory now and not throw ReferenceError
+  const list = engine.getEvaluatedInstances(0);
+  assert.equal(list.length, 1);
+
+  // 3. Explicit binding via engine.bindWasmMemory()
+  const mockMemory2 = new WebAssembly.Memory({ initial: 1 });
+  engine.bindWasmMemory(mockMemory2);
+  assert.equal(fakeWasm.memory, mockMemory2);
+
+  // 4. Static binding via Engine.bindWasmMemory()
+  delete fakeWasm.memory;
+  delete (globalThis).wasmMemory;
+  Engine.bindWasmMemory(mockMemory);
+  assert.equal((globalThis).wasmMemory, mockMemory);
+  const list2 = engine.getEvaluatedInstances(0);
+  assert.equal(list2.length, 1);
+
+  // Clean up global state
+  delete (globalThis).wasmMemory;
+
+  // 5. Fallback JS evaluation when no WASM instance is provided
+  const jsEngine = new Engine();
+  jsEngine.addInstances([new Instance("c1", "inst1")]);
+  const jsList = jsEngine.getEvaluatedInstances(0);
+  assert.equal(jsList.length, 1);
+});
