@@ -115,7 +115,7 @@ test("ThreeAdapter: Token-based dual scene parallel isolation", () => {
   assert.notEqual(ctxA, ctxB);
 });
 
-test("ThreeAdapter: Lifecycle unregisterScene restoreControl true vs false", () => {
+test("ThreeAdapter: Lifecycle unregisterScene abandoned false vs true", () => {
   const engine = new Engine();
   const scene = {};
   const ctx = threeAdapter.registerScene(scene, engine);
@@ -129,27 +129,29 @@ test("ThreeAdapter: Lifecycle unregisterScene restoreControl true vs false", () 
   assert.equal(obj1.matrixAutoUpdate, false);
   assert.equal(obj2.matrixAutoUpdate, false);
 
-  ctx.unregisterObject(obj1, true);
+  // Soft restore: abandoned = false
+  ctx.unregisterObject(obj1, { abandoned: false });
   assert.equal(obj1.matrixAutoUpdate, true);
   assert.equal(obj1.updateMatrixCalled, true);
   assert.equal(ctx.registeredObjects.has(obj1), false);
 
-  threeAdapter.unregisterScene(ctx, true);
+  threeAdapter.unregisterScene(ctx, { abandoned: false });
   assert.equal(obj2.matrixAutoUpdate, true);
   assert.equal(obj2.updateMatrixCalled, true);
   assert.equal(ctx.registeredObjects.size, 0);
 
+  // Hard abandon: abandoned = true
   const ctx2 = threeAdapter.registerScene(scene, engine);
   const obj3 = createMockThreeObject();
   ctx2.registerObject(obj3);
   assert.equal(obj3.matrixAutoUpdate, false);
 
-  threeAdapter.unregisterScene(ctx2, false);
+  threeAdapter.unregisterScene(ctx2, { abandoned: true });
   assert.equal(ctx2.registeredObjects.size, 0);
   assert.equal(obj3.matrixAutoUpdate, false);
 });
 
-test("ThreeAdapter: fastDirty precision semantics (true vs false)", () => {
+test("ThreeAdapter: rasterized precision semantics (true vs false)", () => {
   const engine = new Engine();
   const clip = new Clip("c1").duration(1000).addKeyframe(
     new Keyframe(0).transform(new TransformBuilder().translateX(200).build())
@@ -161,10 +163,12 @@ test("ThreeAdapter: fastDirty precision semantics (true vs false)", () => {
   const obj = createMockThreeObject({ x: 999, y: 999, z: 999 });
   ctx.registerObject(obj);
 
-  threeAdapter.applyToScene(ctx, 0, { fastDirty: true });
+  // rasterized = true: matrix updated, decompose skipped (position stays stale)
+  threeAdapter.applyToScene(ctx, 0, { rasterized: true });
   assert.equal(obj.position.x, 999);
 
-  threeAdapter.applyToScene(ctx, 0, { fastDirty: false });
+  // rasterized = false: matrix updated AND decomposed to position
+  threeAdapter.applyToScene(ctx, 0, { rasterized: false });
   assert.notEqual(obj.position.x, 999);
 });
 
