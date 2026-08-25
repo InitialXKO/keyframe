@@ -30,9 +30,9 @@ export class DOMAdapter {
       if (typeof engine.getEvaluatedInstances === "function") {
         evaluated = engine.getEvaluatedInstances(time);
       } else if (typeof engine.evaluateFrame === "function") {
-        engine.evaluateFrame(time);
-        if (typeof engine.getEvaluatedInstances === "function") {
-          evaluated = engine.getEvaluatedInstances(time);
+        const res = engine.evaluateFrame(time);
+        if (Array.isArray(res)) {
+          evaluated = res;
         }
       }
     }

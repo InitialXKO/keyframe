@@ -136,8 +136,8 @@ const instance = new Instance("bounce_clip", "inst_1")
 engine.addClip(clip);
 engine.addInstances([instance]);
 
-// 评估全局毫秒时刻的动画帧
-const evaluated = engine.evaluateFrame(500);
+// 评估全局毫秒时刻的动画帧并获取包含矩阵等完整数据的实例列表
+const evaluated = engine.getEvaluatedInstances(500);
 ```
 
 ---

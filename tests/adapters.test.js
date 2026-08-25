@@ -258,6 +258,41 @@ test("DOMAdapter: batchApply matrix3d formatting & performance guardrail warning
   assert.ok(elements[0].style.transform.includes("10, 20, 0, 1)"));
 });
 
+test("DOMAdapter: batchApply with engine option triggers single getEvaluatedInstances call without duplicate evaluateFrame", () => {
+  let evaluateFrameCallCount = 0;
+  let getEvaluatedInstancesCallCount = 0;
+
+  const mockEngine = {
+    evaluateFrame(t) {
+      evaluateFrameCallCount++;
+      return { count: 1, ptr: 0, len: 80 };
+    },
+    getEvaluatedInstances(t) {
+      getEvaluatedInstancesCallCount++;
+      return [
+        {
+          id: "inst1",
+          transformMatrix: new Float32Array([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            50, 60, 0, 1
+          ]),
+          opacity: 1,
+          visible: true
+        }
+      ];
+    }
+  };
+
+  const elem = { style: { transform: "" } };
+  domAdapter.batchApply([elem], 500, { engine: mockEngine });
+
+  assert.equal(getEvaluatedInstancesCallCount, 1, "getEvaluatedInstances should be called exactly once");
+  assert.equal(evaluateFrameCallCount, 0, "evaluateFrame should not be called when getEvaluatedInstances is present");
+  assert.ok(elem.style.transform.includes("50, 60, 0, 1)"));
+});
+
 test("Controller: Playback state management & frame events", () => {
   const engine = new Engine();
   const player = controller.createPlayer(engine, { fps: 60, timeScale: 1.0 });
