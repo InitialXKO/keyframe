@@ -76,3 +76,12 @@ export interface CompositionConfig {
   fps: number;
   durationInFrames: number;
 }
+
+export interface EvaluatedInstance {
+  id?: string;
+  clipId?: string;
+  transformMatrix: Float32Array;
+  opacity: number;
+  visible: boolean;
+  clipIndex: number;
+}

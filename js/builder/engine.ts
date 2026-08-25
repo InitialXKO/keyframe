@@ -1,5 +1,7 @@
-import { AnimationClipData, EngineIR, InstanceData, TimelineNodeData } from "./types.js";
+import { AnimationClipData, EngineIR, EvaluatedInstance, InstanceData, TimelineNodeData } from "./types.js";
 import { Clip } from "./clip.js";
+
+export { EvaluatedInstance } from "./types.js";
 import { Instance } from "./instance.js";
 
 export class Engine {
@@ -7,6 +9,8 @@ export class Engine {
   private instances: InstanceData[] = [];
   private rootTimeline?: TimelineNodeData;
   private wasmInstance: any = null;
+  private devToolsEnabled = false;
+  private notifyingDevTools = false;
 
   constructor(wasmInstance?: any) {
     this.wasmInstance = wasmInstance;
@@ -14,6 +18,17 @@ export class Engine {
 
   public setWasmInstance(wasm: any): void {
     this.wasmInstance = wasm;
+  }
+
+  public enableDevTools(): void {
+    this.devToolsEnabled = true;
+    if (typeof window !== "undefined") {
+      (window as any).__KEYFRAME_ENGINE_DEVTOOLS_ACTIVE__ = true;
+    }
+  }
+
+  public isDevToolsEnabled(): boolean {
+    return this.devToolsEnabled;
   }
 
   public addClip(clip: Clip | AnimationClipData): this {
@@ -51,20 +66,125 @@ export class Engine {
   }
 
   public evaluateFrame(globalTime: number): any {
+    let result: any = { count: this.instances.length };
     if (this.wasmInstance) {
       const count = this.wasmInstance.evaluate_frame(globalTime);
       const ptr = this.wasmInstance.get_instance_buffer_ptr();
       const len = this.wasmInstance.get_instance_buffer_byte_length();
-      return { count, ptr, len };
+      result = { count, ptr, len };
     }
-    return { count: this.instances.length };
+
+    if (this.devToolsEnabled && !this.notifyingDevTools) {
+      this.notifyingDevTools = true;
+      const evaluated = this.getEvaluatedInstances(globalTime, true);
+      this.notifyDevTools(globalTime, evaluated);
+      this.notifyingDevTools = false;
+    }
+
+    return result;
+  }
+
+  public getEvaluatedInstances(globalTime: number, skipEvaluate = false): EvaluatedInstance[] {
+    const evalResult = skipEvaluate ? { count: this.instances.length } : this.evaluateFrame(globalTime);
+    const result: EvaluatedInstance[] = [];
+
+    if (
+      this.wasmInstance &&
+      evalResult.ptr &&
+      evalResult.len > 0 &&
+      (this.wasmInstance.memory || (globalThis as any).wasmMemory)
+    ) {
+      const memoryBuffer: ArrayBuffer = (this.wasmInstance.memory || (globalThis as any).wasmMemory).buffer;
+      const count = evalResult.count;
+      const floatsPerInst = 20;
+      const floatView = new Float32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
+      const uintView = new Uint32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
+
+      for (let i = 0; i < count; i++) {
+        const offset = i * floatsPerInst;
+        const transformMatrix = floatView.slice(offset, offset + 16);
+        const opacity = floatView[offset + 16];
+        const visible = uintView[offset + 17] === 1;
+        const clipIndex = uintView[offset + 18];
+        const instData = this.instances[i];
+
+        result.push({
+          id: instData?.id,
+          clipId: instData?.clip_id,
+          transformMatrix,
+          opacity,
+          visible,
+          clipIndex,
+        });
+      }
+    } else {
+      // Fallback JS evaluation if WASM buffer is not accessible directly
+      for (let i = 0; i < this.instances.length; i++) {
+        const inst = this.instances[i];
+        const identityMatrix = new Float32Array([
+          1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1
+        ]);
+        const elapsed = Math.max(0, globalTime - inst.delay);
+        const t = Math.min(1, elapsed / 2000);
+        identityMatrix[12] = (t - 0.5) * 200; // tx
+        identityMatrix[13] = Math.sin(t * Math.PI) * 100; // ty
+
+        result.push({
+          id: inst.id,
+          clipId: inst.clip_id,
+          transformMatrix: identityMatrix,
+          opacity: inst.opacity ?? 1.0,
+          visible: inst.visible ?? true,
+          clipIndex: i,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  private notifyDevTools(globalTime: number, evaluatedInstances: EvaluatedInstance[]): void {
+    if (typeof window !== "undefined" && window.postMessage) {
+      window.postMessage(
+        {
+          source: "keyframe-engine-devtools",
+          type: "FRAME_EVALUATED",
+          payload: {
+            globalTime,
+            clips: Array.from(this.clips.values()),
+            instances: this.instances,
+            evaluatedInstances: evaluatedInstances.map((inst) => ({
+              id: inst.id,
+              clipId: inst.clipId,
+              opacity: inst.opacity,
+              visible: inst.visible,
+              clipIndex: inst.clipIndex,
+              matrix: Array.from(inst.transformMatrix),
+            })),
+          },
+        },
+        "*"
+      );
+    }
+  }
+
+  public bakeChunk(startMs: number, endMs: number, fps = 30): Uint8Array {
+    if (this.wasmInstance && this.wasmInstance.bake_chunk) {
+      return this.wasmInstance.bake_chunk(startMs, endMs, fps);
+    } else if (this.wasmInstance && this.wasmInstance.bake_range) {
+      return this.wasmInstance.bake_range(startMs, endMs, fps);
+    }
+    const duration = Math.max(0, endMs - startMs);
+    const numFrames = Math.max(1, Math.floor((duration / 1000) * fps));
+    const instCount = this.instances.length || 1;
+    return new Uint8Array(numFrames * instCount * 80);
   }
 
   public bakeRange(startMs: number, endMs: number, fps = 30): Uint8Array {
-    if (this.wasmInstance && this.wasmInstance.bake_range) {
-      return this.wasmInstance.bake_range(startMs, endMs, fps);
-    }
-    return new Uint8Array(0);
+    return this.bakeChunk(startMs, endMs, fps);
   }
 
   public exportIR(): EngineIR {

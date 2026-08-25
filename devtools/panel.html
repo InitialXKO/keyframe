@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Keyframe Engine DevTools</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header>
+    <h1>⚡ Keyframe Engine Inspector</h1>
+    <span id="statusBadge" class="status-badge">Waiting for Engine...</span>
+  </header>
+
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="tab-curves">📈 Keyframe Curves</button>
+    <button class="tab-btn" data-tab="tab-instances">🧩 Instance Blend Inspector</button>
+  </nav>
+
+  <main>
+    <section id="tab-curves" class="tab-content active">
+      <div class="card">
+        <div class="card-title">Clip Keyframe Evaluation Curve</div>
+        <p style="font-size: 12px; color: #a0a0a0; margin-top: 0;">
+          Real-time Bezier / Spring / Easing curve evaluation curve over clip duration.
+        </p>
+        <svg id="curveSvg" class="curve-plot"></svg>
+      </div>
+      <div id="clipDetails" class="card">
+        <div class="card-title">Clip Details</div>
+        <div id="clipData">No clip data received yet.</div>
+      </div>
+    </section>
+
+    <section id="tab-instances" class="tab-content">
+      <div class="card">
+        <div class="card-title">Evaluated Instance States</div>
+        <div style="font-size:12px; margin-bottom:8px;">
+          Global Frame Time: <span id="globalTimeVal" style="color:#50fa7b; font-weight:bold;">0.00 ms</span>
+        </div>
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>Instance ID</th>
+              <th>Clip ID</th>
+              <th>Opacity</th>
+              <th>Visible</th>
+              <th>Transform Matrix (4x4)</th>
+            </tr>
+          </thead>
+          <tbody id="instancesTableBody">
+            <tr><td colspan="5" style="text-align:center; color:#6272a4;">No active instances evaluated yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="panel.js"></script>
+</body>
+</html>
