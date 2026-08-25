@@ -12,6 +12,7 @@
 - **WebGPU 与 WGSL 着色器**：提供 Compute Shader 与 Vertex Shader 模板，支持 GPU 端并行关键帧矩阵计算与顶点变换。
 - **TypeScript 链式 Builder API**：提供类型安全的 `AnimationClipBuilder`、`InstanceBuilder`、`TimelineBuilder` 和 `EngineBuilder`，轻松构建复杂的动画中间表示（IR）。
 - **Remotion 语法兼容层**：无缝对接 Remotion 常用 API（如 `spring`、`interpolate`、`interpolateColors`、`Sequence`、`Series`、`useCurrentFrame`、`useVideoConfig`）。
+- **精确音画同步处理**：基于确定性无状态时间驱动机制，支持以 HTML5 Audio/Video `currentTime`、Web Audio API `AudioContext.currentTime` 或离线烘焙帧为基准实现精准音画同步。
 - **OPFS 高效存储**：支持将逐帧烘焙的 GPU Buffer 写入浏览器 Origin Private File System，提供高性能、低内存占用的动画帧缓存方案。
 
 ---
@@ -259,6 +260,47 @@ const context = adapter.createContext(gpuBuffer);
 // 将 WASM 实例求值数据高效写入 WebGPU 缓冲区
 adapter.updateBuffer(context, wasmEngine);
 ```
+
+---
+
+## 🎵 音画同步 (Audio-Visual Sync) 处理
+
+`keyframe-engine` 采用**纯函数式确定性求值架构**，其核心插值与评估方法 `engine.evaluateFrame(timeMs)` 不依赖全局浏览器系统定时器（`requestAnimationFrame` / `performance.now()`），因此能够天然支持多种音画同步场景：
+
+### 1. 媒体播放器时钟同步 (HTML5 `<audio>` / `<video>`)
+在实时播放场景中，通过监听 HTML5 Media Element 的播放时间作为统一主时钟驱动动画求值，避免掉帧或积累累计时间漂移：
+
+```typescript
+const audio = document.getElementById("bgm") as HTMLAudioElement;
+
+function renderFrame() {
+  if (!audio.paused) {
+    // 统一以音频播放位置 (毫秒) 作为主时钟驱动动画
+    const currentAudioMs = audio.currentTime * 1000;
+    engine.evaluateFrame(currentAudioMs);
+    renderer.render(engine.getEvaluatedInstances(currentAudioMs));
+  }
+  requestAnimationFrame(renderFrame);
+}
+```
+
+### 2. 高精度 Web Audio API 播放同步 (`AudioContext.currentTime`)
+针对需要毫秒级音频对齐的交互应用或音乐可视化，通过 `AudioContext` 采样率级精准时钟进行驱动：
+
+```typescript
+const audioCtx = new AudioContext();
+const startTime = audioCtx.currentTime;
+
+function syncWithAudioContext() {
+  const elapsedMs = (audioCtx.currentTime - startTime) * 1000;
+  engine.evaluateFrame(elapsedMs);
+  // 执行 WebGL / WebGPU / Three.js 渲染同步...
+  requestAnimationFrame(syncWithAudioContext);
+}
+```
+
+### 3. 离线离散渲染与音画合成 (WebCodecs / FFmpeg)
+在服务端或 WebWorker 视频渲染导出场景中，结合 OPFS 烘焙机制对每帧精确时间戳（例如按 30fps/60fps 离散时间戳 `frame * (1000 / fps)`）进行无卡顿评估并写入二进制缓存，渲染出的图像帧序列可与音频轨实现 **0 误差** 严格合成。
 
 ---
 
