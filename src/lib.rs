@@ -117,6 +117,10 @@ impl KeyframeEngine {
         instances.len()
     }
 
+    pub fn bake_chunk(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
+        self.inner.bake_chunk(start_ms, end_ms, fps)
+    }
+
     pub fn bake_range(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
         self.inner.bake_range(start_ms, end_ms, fps)
     }

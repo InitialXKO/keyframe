@@ -2,36 +2,46 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>WebGL Fallback Demo - Keyframe Engine</title>
+  <title>Canvas 2D CPU Fallback Renderer - Keyframe Engine</title>
   <style>
-    body { margin: 0; background: #1e1e1e; color: #fff; font-family: sans-serif; }
-    canvas { display: block; margin: 20px auto; border: 1px solid #444; }
-    h1 { text-align: center; }
+    body { margin: 0; background: #1e1e1e; color: #fff; font-family: sans-serif; text-align: center; }
+    canvas { display: block; margin: 20px auto; border: 1px solid #444; background: #000; }
+    #status { margin-top: 10px; color: #4caf50; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>WebGL Fallback Demo (CPU Evaluated)</h1>
+  <h1>Unified Renderer API (Canvas 2D CPU Fallback)</h1>
+  <p id="status">Initializing...</p>
   <canvas id="canvas" width="800" height="600"></canvas>
   <script type="module">
-    import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from '../../dist/index.js';
+    import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder, createRenderer } from '../../dist/index.js';
 
     const canvas = document.getElementById('canvas');
-    const gl = canvas.getContext('webgl');
 
     const engine = new Engine();
     const clip = new Clip('bounce')
       .duration(2000)
       .easing(Easing.EaseInOut)
       .iterations(Infinity)
-      .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(-300).translateY(0).build()))
-      .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(300).translateY(200).build()))
-      .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().translateX(-300).translateY(0).build()));
+      .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(-200).translateY(-100).build()))
+      .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(200).translateY(100).build()))
+      .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().translateX(-200).translateY(-100).build()));
 
     engine.addClip(clip);
     engine.addInstances([new Instance('bounce', 'inst1')]);
     await engine.prepare();
 
-    console.log('Engine initialized with IR:', engine.exportIR());
+    // Use unified createRenderer API forcing canvas2d fallback or auto-detection
+    const renderer = await createRenderer(canvas, "canvas2d");
+    document.getElementById('status').innerText = `Active Backend: ${renderer.getBackendType()}`;
+
+    let startTime = performance.now();
+    function animate(time) {
+      const frameTimeMs = time - startTime;
+      renderer.render(engine, frameTimeMs);
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
   </script>
 </body>
 </html>

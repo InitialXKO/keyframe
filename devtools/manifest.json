@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "KeyframeEngine DevTools",
+  "version": "1.0.0",
+  "description": "Real-time keyframe curve solver & instance blend inspector for KeyframeEngine",
+  "devtools_page": "devtools.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "permissions": ["activeTab"]
+}

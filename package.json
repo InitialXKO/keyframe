@@ -2,8 +2,9 @@
   "name": "keyframe-engine",
   "version": "1.0.0",
   "description": "WASM Keyframe Animation Engine with WGSL Compute & Remotion Compat Layer",
+  "type": "module",
   "main": "dist/index.js",
-  "module": "dist/index.mjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build:wasm": "wasm-pack build --target web --out-dir pkg",

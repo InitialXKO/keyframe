@@ -104,7 +104,7 @@ impl EngineState {
         &self.evaluated_gpu_instances
     }
 
-    pub fn bake_range(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
+    pub fn bake_chunk(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
         if !self.prepared {
             let _ = self.prepare();
         }
@@ -120,6 +120,10 @@ impl EngineState {
         }
 
         total_bytes
+    }
+
+    pub fn bake_range(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
+        self.bake_chunk(start_ms, end_ms, fps)
     }
 
     pub fn export_ir(&self) -> EngineIR {

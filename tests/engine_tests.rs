@@ -160,6 +160,56 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_bake_chunk() {
+        let mut engine = EngineState::new();
+        let clip_data = AnimationClipData {
+            id: "chunk_clip".to_string(),
+            duration: 2000.0,
+            easing: EasingType::Linear,
+            iterations: 1.0,
+            keyframes: vec![
+                KeyframeData {
+                    time: 0.0,
+                    transform: TransformData::default(),
+                    opacity: 1.0,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+                KeyframeData {
+                    time: 2000.0,
+                    transform: TransformData {
+                        translation: [100.0, 0.0, 0.0],
+                        ..Default::default()
+                    },
+                    opacity: 0.0,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+            ],
+        };
+        engine.add_clip(clip_data).unwrap();
+
+        let inst_data = InstanceData {
+            id: "inst1".to_string(),
+            clip_id: "chunk_clip".to_string(),
+            opacity: 1.0,
+            visible: true,
+            delay: 0.0,
+            duration_scale: 1.0,
+            time_remapping_speed: 1.0,
+            blend_mode: BlendMode::Override,
+            initial_transform: TransformData::default(),
+        };
+        engine.add_instance(inst_data).unwrap();
+
+        let chunk1 = engine.bake_chunk(0.0, 1000.0, 30.0);
+        let chunk2 = engine.bake_chunk(1000.0, 2000.0, 30.0);
+
+        assert!(!chunk1.is_empty());
+        assert!(!chunk2.is_empty());
+    }
+
+    #[test]
     fn test_timeline_flattening() {
         let root = TimelineNode {
             id: "root".to_string(),
