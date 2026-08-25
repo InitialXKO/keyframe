@@ -2,19 +2,23 @@ export class AdapterContext {
     scene;
     engine;
     defaultFastDirty;
+    defaultRasterized;
     registeredObjects = new Set();
     objectOptions = new Map();
     constructor(scene, engine, options) {
         this.scene = scene;
         this.engine = engine;
-        this.defaultFastDirty = options?.defaultFastDirty ?? false;
+        const fastDirty = options?.defaultFastDirty ?? options?.defaultRasterized ?? false;
+        this.defaultFastDirty = fastDirty;
+        this.defaultRasterized = fastDirty;
     }
     registerObject(object, options) {
         if (!object)
             return;
         this.registeredObjects.add(object);
-        if (options) {
-            this.objectOptions.set(object, { fastDirty: options.fastDirty });
+        const fastDirty = options?.fastDirty ?? options?.rasterized;
+        if (fastDirty !== undefined) {
+            this.objectOptions.set(object, { fastDirty, rasterized: fastDirty });
         }
         object.matrixAutoUpdate = false;
     }
@@ -23,7 +27,8 @@ export class AdapterContext {
             return;
         this.registeredObjects.delete(object);
         this.objectOptions.delete(object);
-        if (restoreControl) {
+        const shouldRestore = typeof restoreControl === "boolean" ? restoreControl : !restoreControl?.abandoned;
+        if (shouldRestore) {
             object.matrixAutoUpdate = true;
             if (typeof object.updateMatrix === "function") {
                 object.updateMatrix();
@@ -32,23 +37,14 @@ export class AdapterContext {
     }
 }
 export class ThreeAdapter {
-    /**
-     * Register scene and get unique AdapterContext credential handle.
-     */
     registerScene(scene, engine, options) {
         return new AdapterContext(scene, engine, options);
     }
-    /**
-     * Unbind scene context.
-     * @param ctx AdapterContext handle
-     * @param restoreControl true (default): restore matrixAutoUpdate=true and updateMatrix().
-     *                       false: clear internal references directly, skip matrix restore.
-     *                       WARNING: If false is used on non-disposed scene, objects remain locked.
-     */
-    unregisterScene(ctx, restoreControl = true) {
+    unregisterScene(ctx, restoreControlOrOptions = true) {
         if (!ctx)
             return;
-        if (restoreControl) {
+        const shouldRestore = typeof restoreControlOrOptions === "boolean" ? restoreControlOrOptions : !restoreControlOrOptions?.abandoned;
+        if (shouldRestore) {
             for (const obj of ctx.registeredObjects) {
                 obj.matrixAutoUpdate = true;
                 if (typeof obj.updateMatrix === "function") {
@@ -59,28 +55,19 @@ export class ThreeAdapter {
         ctx.registeredObjects.clear();
         ctx.objectOptions.clear();
     }
-    /**
-     * Apply matrices to all registered objects in Context credential.
-     * Atomic execution order:
-     * 1. object.matrixAutoUpdate = false
-     * 2. object.matrix.copy(rawMatrix) / elements assignment
-     * 3. if (!fastDirty) matrix.decompose(position, quaternion, scale)
-     */
     applyToScene(ctx, time, options) {
         if (!ctx || !ctx.engine)
             return;
         const evaluated = ctx.engine.getEvaluatedInstances(time);
         const objectsArray = Array.from(ctx.registeredObjects);
         const sceneDefaultFastDirty = ctx.defaultFastDirty;
-        const globalFastDirty = options?.fastDirty;
+        const globalFastDirty = options?.fastDirty ?? options?.rasterized;
         for (let i = 0; i < objectsArray.length; i++) {
             const obj = objectsArray[i];
             const instData = evaluated[i];
             if (!obj || !instData)
                 continue;
-            // 1. Lock control
             obj.matrixAutoUpdate = false;
-            // 2. Write native column-major matrix
             const rawMatrix = instData.transformMatrix;
             if (obj.matrix) {
                 if (typeof obj.matrix.fromArray === "function") {
@@ -96,10 +83,8 @@ export class ThreeAdapter {
                     obj.matrix.elements = new Float32Array(rawMatrix);
                 }
             }
-            // Determine fastDirty strategy
             const objSpecificFastDirty = ctx.objectOptions.get(obj)?.fastDirty;
             const isFastDirty = globalFastDirty ?? objSpecificFastDirty ?? sceneDefaultFastDirty;
-            // 3. Decompose if fastDirty is false
             if (!isFastDirty && obj.matrix) {
                 if (typeof obj.matrix.decompose === "function") {
                     if (!obj.position)

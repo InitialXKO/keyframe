@@ -116,6 +116,8 @@ pub struct InstanceData {
     pub initial_transform: TransformData,
 }
 
+pub const INSTANCE_SIZE: usize = 80;
+
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GpuInstanceData {
