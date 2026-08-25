@@ -1,4 +1,4 @@
-import { InstanceData, TransformData } from "./types.js";
+import { BlendMode, InstanceData, TransformData } from "./types.js";
 import { TransformBuilder } from "./transform.js";
 
 let instanceIdCounter = 0;
@@ -10,6 +10,8 @@ export class Instance {
   private _visible = true;
   private _delay = 0;
   private _durationScale = 1.0;
+  private _timeRemappingSpeed = 1.0;
+  private _blendMode: BlendMode = BlendMode.Override;
   private _initialTransform: TransformData = new TransformBuilder().build();
 
   constructor(clipId: string, id?: string) {
@@ -37,6 +39,16 @@ export class Instance {
     return this;
   }
 
+  public timeRemappingSpeed(speed: number): this {
+    this._timeRemappingSpeed = speed;
+    return this;
+  }
+
+  public blendMode(mode: BlendMode): this {
+    this._blendMode = mode;
+    return this;
+  }
+
   public initialTransform(t: TransformData): this {
     this._initialTransform = t;
     return this;
@@ -50,6 +62,8 @@ export class Instance {
       visible: this._visible,
       delay: this._delay,
       duration_scale: this._durationScale,
+      time_remapping_speed: this._timeRemappingSpeed,
+      blend_mode: this._blendMode,
       initial_transform: this._initialTransform,
     };
   }

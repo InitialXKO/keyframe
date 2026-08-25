@@ -8,6 +8,11 @@ export enum Easing {
   Step = "Step",
 }
 
+export enum BlendMode {
+  Override = "Override",
+  Additive = "Additive",
+}
+
 export interface CubicBezierParams {
   p1x: number;
   p1y: number;
@@ -45,6 +50,8 @@ export interface InstanceData {
   visible: boolean;
   delay: number;
   duration_scale: number;
+  time_remapping_speed?: number;
+  blend_mode?: BlendMode;
   initial_transform: TransformData;
 }
 

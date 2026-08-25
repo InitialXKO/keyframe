@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from "../dist/builder/index.js";
-import { spring, interpolate, interpolateColors, Sequence, Series, setRemotionFrameContext, useCurrentFrame } from "../dist/remotion/index.js";
+import { Engine, Clip, Instance, Keyframe, Easing, BlendMode, TransformBuilder } from "../dist/builder/index.js";
+import { spring, interpolate, interpolateColors, Sequence, Series, createRemotionAdapter, setRemotionFrameContext, useCurrentFrame } from "../dist/remotion/index.js";
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
-test("Builder API constructs valid Clip and Instance IR with Infinity iterations", () => {
+test("Builder API constructs valid Clip and Instance IR with Additive BlendMode & Time Remapping", () => {
   const engine = new Engine();
 
   const clip = new Clip("test_clip")
@@ -26,7 +26,9 @@ test("Builder API constructs valid Clip and Instance IR with Infinity iterations
 
   const inst = new Instance("test_clip", "inst_1")
     .opacity(0.8)
-    .delay(100);
+    .delay(100)
+    .timeRemappingSpeed(1.5)
+    .blendMode(BlendMode.Additive);
 
   engine.addClip(clip);
   engine.addInstances([inst]);
@@ -37,7 +39,8 @@ test("Builder API constructs valid Clip and Instance IR with Infinity iterations
   assert.equal(ir.clips[0].keyframes.length, 2);
   assert.equal(ir.instances.length, 1);
   assert.equal(ir.instances[0].id, "inst_1");
-  assert.equal(ir.instances[0].delay, 100);
+  assert.equal(ir.instances[0].time_remapping_speed, 1.5);
+  assert.equal(ir.instances[0].blend_mode, BlendMode.Additive);
 });
 
 test("Remotion spring, interpolate & interpolateColors math", () => {
@@ -53,7 +56,7 @@ test("Remotion spring, interpolate & interpolateColors math", () => {
   assert.ok(colorHex.includes("rgba(128, 128, 0"));
 });
 
-test("Remotion Sequence & Series context propagation", () => {
+test("Remotion Sequence & Series context propagation & createRemotionAdapter", () => {
   setRemotionFrameContext(30);
   assert.equal(useCurrentFrame(), 30);
 
@@ -67,6 +70,11 @@ test("Remotion Sequence & Series context propagation", () => {
   });
 
   assert.equal(evaluatedValue, 20);
+
+  const engine = new Engine();
+  const adapter = createRemotionAdapter(engine);
+  const ir = adapter.compileToIR();
+  assert.ok(ir.clips !== undefined);
 });
 
 test("OPFS Storage & StorageAdapter bake bytes persistence", async () => {

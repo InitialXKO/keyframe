@@ -13,6 +13,13 @@ pub enum EasingType {
     Step,
 }
 
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum BlendMode {
+    Override,
+    Additive,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CubicBezierParams {
     pub p1x: f64,
@@ -59,6 +66,14 @@ where
     }
 }
 
+fn default_blend_mode() -> BlendMode {
+    BlendMode::Override
+}
+
+fn default_time_scale() -> f64 {
+    1.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyframeData {
     pub time: f64, // local time in milliseconds
@@ -94,6 +109,10 @@ pub struct InstanceData {
     pub visible: bool,
     pub delay: f64,
     pub duration_scale: f64,
+    #[serde(default = "default_time_scale")]
+    pub time_remapping_speed: f64, // Speed multiplier (negative for reverse)
+    #[serde(default = "default_blend_mode")]
+    pub blend_mode: BlendMode,
     pub initial_transform: TransformData,
 }
 

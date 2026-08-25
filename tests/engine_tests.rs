@@ -5,7 +5,8 @@ mod unit_tests {
     use keyframe_engine::interpolator::{interpolate_cubic_bezier_path_3d, slerp_quaternions};
     use keyframe_engine::timeline::TimelineManager;
     use keyframe_engine::types::{
-        AnimationClipData, EasingType, InstanceData, KeyframeData, TimelineNode, TransformData,
+        AnimationClipData, BlendMode, EasingType, InstanceData, KeyframeData, TimelineNode,
+        TransformData,
     };
 
     #[test]
@@ -57,6 +58,55 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_additive_and_time_remapping() {
+        let mut engine = EngineState::new();
+        let clip_data = AnimationClipData {
+            id: "clip1".to_string(),
+            duration: 1000.0,
+            easing: EasingType::Linear,
+            iterations: 1.0,
+            keyframes: vec![
+                KeyframeData {
+                    time: 0.0,
+                    transform: TransformData::default(),
+                    opacity: 1.0,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+                KeyframeData {
+                    time: 1000.0,
+                    transform: TransformData {
+                        translation: [100.0, 0.0, 0.0],
+                        ..Default::default()
+                    },
+                    opacity: 0.5,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+            ],
+        };
+        engine.add_clip(clip_data).unwrap();
+
+        let inst_data = InstanceData {
+            id: "inst1".to_string(),
+            clip_id: "clip1".to_string(),
+            opacity: 1.0,
+            visible: true,
+            delay: 0.0,
+            duration_scale: 1.0,
+            time_remapping_speed: 2.0, // 2x speed
+            blend_mode: BlendMode::Additive,
+            initial_transform: TransformData::default(),
+        };
+        engine.add_instance(inst_data).unwrap();
+
+        let gpu_instances = engine.evaluate_frame(250.0);
+        assert_eq!(gpu_instances.len(), 1);
+        // At t=250ms with 2x speed, local_time = 500ms -> translation x should be 50.0
+        assert!((gpu_instances[0].transform_matrix[12] - 50.0).abs() < 0.1);
+    }
+
+    #[test]
     fn test_bake_range() {
         let mut engine = EngineState::new();
         let clip_data = AnimationClipData {
@@ -93,6 +143,8 @@ mod unit_tests {
             visible: true,
             delay: 0.0,
             duration_scale: 1.0,
+            time_remapping_speed: 1.0,
+            blend_mode: BlendMode::Override,
             initial_transform: TransformData::default(),
         };
         engine.add_instance(inst_data).unwrap();
