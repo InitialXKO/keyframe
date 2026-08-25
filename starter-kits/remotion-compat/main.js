@@ -15,7 +15,7 @@ async function initRemotionExport() {
     .addKeyframe(new Keyframe(5000).transform({ translation: [300, 180, 0], scale: [1.5, 1.5, 1], rotation_quat: [0, 0, 0.38, 0.92], origin: [0, 0, 0] }));
 
   engine.addClip(clip);
-  engine.addInstance(new Instance('hero_banner', 'banner_1'));
+  engine.addInstances([new Instance('hero_banner', 'banner_1')]);
   await engine.prepare();
 
   // Create AudioContext for Audio Clock Master Adaptive Convergence

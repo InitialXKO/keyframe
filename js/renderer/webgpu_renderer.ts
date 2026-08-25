@@ -55,7 +55,7 @@ export class WebGPURenderer implements IRenderer {
   public render(engine: Engine, frameTimeMs: number): void {
     if (!this.device || !this.context) return;
 
-    engine.evaluateFrame(frameTimeMs);
+    const evaluated = engine.getEvaluatedInstances(frameTimeMs);
 
     const commandEncoder = this.device.createCommandEncoder();
     const textureView = this.context.getCurrentTexture().createView();

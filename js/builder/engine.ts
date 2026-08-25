@@ -507,22 +507,10 @@ export class Engine {
 
   /**
    * Evaluates the engine animation state at `globalTime` (in milliseconds).
-   *
-   * Note: In WASM mode, this triggers WASM frame evaluation and returns low-level buffer metadata
-   * `{ count, ptr, len }`. If structured instance data with transform matrices is needed,
-   * call `getEvaluatedInstances(globalTime)` instead.
    */
-  public evaluateFrame(globalTime: number): any {
+  private evaluate(globalTime: number): any {
     if (!this.prepared) {
       throw new Error("Engine not prepared");
-    }
-
-    // Cache-first lookup: if OPFS frame index contains cached bake for globalTime, return cached frame data
-    if (this.opfsStorage.isMounted()) {
-      const cachedFrame = this.opfsStorage.getFrameFromIndex(globalTime);
-      if (cachedFrame) {
-        return cachedFrame;
-      }
     }
 
     let result: any = { count: this.instances.length };
@@ -548,10 +536,22 @@ export class Engine {
    *
    * Each `EvaluatedInstance` includes `transformMatrix`, `opacity`, `visible`, and instance/clip identifiers.
    * @param globalTime The global time in milliseconds.
-   * @param skipEvaluate If `true`, re-evaluation of the WASM frame is skipped (if evaluateFrame was already called).
+   * @param skipEvaluate If `true`, re-evaluation of the WASM frame is skipped.
    */
   public getEvaluatedInstances(globalTime: number, skipEvaluate = false): EvaluatedInstance[] {
-    const evalResult = skipEvaluate ? { count: this.instances.length } : this.evaluateFrame(globalTime);
+    if (!this.prepared && !skipEvaluate) {
+      throw new Error("Engine not prepared");
+    }
+
+    // Cache-first lookup: if OPFS frame index contains cached bake for globalTime, return cached evaluated instances
+    if (this.opfsStorage.isMounted()) {
+      const cached = this.opfsStorage.getFrameFromIndex(globalTime);
+      if (cached && Array.isArray(cached)) {
+        return cached;
+      }
+    }
+
+    const evalResult = skipEvaluate ? { count: this.instances.length } : this.evaluate(globalTime);
     const result: EvaluatedInstance[] = [];
 
     if (this.wasmInstance) {

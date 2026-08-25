@@ -7,9 +7,13 @@ export { Easing, BlendMode } from "../builder/types.js";
 
 export function createRemotionAdapter(engineInstance: any) {
   return {
+    getFrame: (frame: number, fps = 30) => {
+      const timeMs = (frame / fps) * 1000;
+      return engineInstance.getEvaluatedInstances(timeMs);
+    },
     evaluateFrame: (frame: number, fps = 30) => {
       const timeMs = (frame / fps) * 1000;
-      return engineInstance.evaluateFrame(timeMs);
+      return engineInstance.getEvaluatedInstances(timeMs);
     },
     compileToIR: () => {
       return engineInstance.exportIR();

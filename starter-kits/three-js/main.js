@@ -40,7 +40,7 @@ async function initThreeDemo() {
   const mockScene = { isScene: true };
   const mockMesh = new MockThreeObject();
 
-  engine.addInstance(new Instance('spin_mesh', 'mesh_1'));
+  engine.addInstances([new Instance('spin_mesh', 'mesh_1')]);
   await engine.prepare();
 
   // 1. Register scene to obtain Token Credential (AdapterContext)

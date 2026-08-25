@@ -191,7 +191,7 @@ test("Engine DevTools messaging integration", async () => {
   engine.enableDevTools();
   assert.equal(engine.isDevToolsEnabled(), true);
 
-  engine.evaluateFrame(250);
+  engine.getEvaluatedInstances(250);
   assert.ok(postedMessage !== null);
   assert.equal(postedMessage.source, "keyframe-engine-devtools");
   assert.equal(postedMessage.type, "FRAME_EVALUATED");
@@ -275,10 +275,10 @@ test("Engine WASM Memory binding, auto-resolution, and error handling", async ()
 });
 
 test("Engine.prepare() compatibility validation and unprepared guardrail", async () => {
-  // Unprepared engine should throw Error("Engine not prepared") on evaluateFrame
+  // Unprepared engine should throw Error("Engine not prepared") on getEvaluatedInstances
   const engine = new Engine();
   assert.throws(() => {
-    engine.evaluateFrame(0);
+    engine.getEvaluatedInstances(0);
   }, /Engine not prepared/);
 
   // Validation 1: mass !== 1.0 throws error
