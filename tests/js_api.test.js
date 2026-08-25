@@ -6,6 +6,54 @@ import { spring, interpolate, interpolateColors, Sequence, Series, createRemotio
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
+test("JS Fallback: Evaluates clip keyframes accurately without WASM instance (Issue #2 reproduction)", () => {
+  const engine = new Engine(); // No wasmInstance
+  const clip = new Clip("test")
+    .duration(2000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().translateX(500).build()));
+  engine.addClip(clip);
+  engine.addInstances([new Instance("test", "i1")]);
+  engine.prepare();
+
+  const e = engine.getEvaluatedInstances(1000)[0];
+  // Expected tx = 250 (linear interpolation halfway through 2000ms duration)
+  assert.equal(e.transformMatrix[12], 250);
+  assert.equal(e.transformMatrix[13], 0);
+  assert.equal(e.opacity, 1.0);
+  assert.equal(e.visible, true);
+});
+
+test("JS Fallback: Supports Additive BlendMode, delay, time remapping, and initial transform", () => {
+  const engine = new Engine();
+  const clip = new Clip("clip1")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+  const inst = new Instance("clip1", "inst1")
+    .delay(200)
+    .timeRemappingSpeed(2.0)
+    .blendMode(BlendMode.Additive)
+    .initialTransform(new TransformBuilder().translateX(50).build());
+
+  engine.addClip(clip);
+  engine.addInstances([inst]);
+
+  // Before delay (at t=100ms)
+  const evalBeforeDelay = engine.getEvaluatedInstances(100)[0];
+  assert.equal(evalBeforeDelay.visible, false);
+  assert.equal(evalBeforeDelay.opacity, 0.0);
+
+  // At globalTime = 400ms:
+  // elapsed = (400 - 200) * 2.0 = 400ms localTime
+  // clip linear interpolation: tx = 40
+  // Additive blend with initial tx=50: final tx = 50 + 40 = 90
+  const evalActive = engine.getEvaluatedInstances(400)[0];
+  assert.equal(evalActive.visible, true);
+  assert.equal(evalActive.transformMatrix[12], 90);
+});
+
 test("Builder API constructs valid Clip and Instance IR with Additive BlendMode & Time Remapping", () => {
   const engine = new Engine();
 
