@@ -116,7 +116,7 @@ pub struct InstanceData {
     pub initial_transform: TransformData,
 }
 
-#[repr(C)]
+#[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GpuInstanceData {
     pub transform_matrix: [f32; 16], // 4x4 matrix
@@ -126,7 +126,7 @@ pub struct GpuInstanceData {
     pub _padding: u32,
 }
 
-#[repr(C)]
+#[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GpuClipState {
     pub clip_index: u32,
