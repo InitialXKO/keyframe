@@ -1,4 +1,4 @@
-import { Easing, KeyframeData, CubicBezierParams, TransformData } from "./types.js";
+import { Easing, KeyframeData, CubicBezierParams, TransformData, SpringConfig, InterpolateConfig } from "./types.js";
 import { TransformBuilder } from "./transform.js";
 
 export class Keyframe {
@@ -28,6 +28,16 @@ export class Keyframe {
     if (cubicParams) {
       this.data.cubic_params = cubicParams;
     }
+    return this;
+  }
+
+  public springConfig(config: SpringConfig): this {
+    this.data.springConfig = config;
+    return this;
+  }
+
+  public interpolateConfig(config: InterpolateConfig): this {
+    this.data.interpolateConfig = config;
     return this;
   }
 

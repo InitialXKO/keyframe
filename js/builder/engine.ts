@@ -1,7 +1,8 @@
-import { AnimationClipData, BlendMode, CubicBezierParams, Easing, EngineIR, EvaluatedInstance, InstanceData, KeyframeData, TimelineNodeData, TransformData } from "./types.js";
+import { AnimationClipData, BlendMode, CubicBezierParams, Easing, EngineIR, EvaluatedInstance, InstanceData, KeyframeData, PrepareOptions, TimelineNodeData, TransformData } from "./types.js";
 import { Clip } from "./clip.js";
+import { OPFSStorage } from "../opfs_storage.js";
 
-export { EvaluatedInstance } from "./types.js";
+export { EvaluatedInstance, PrepareOptions } from "./types.js";
 import { Instance } from "./instance.js";
 
 function solveCubicBezier(p1x: number, p1y: number, p2x: number, p2y: number, t: number): number {
@@ -296,6 +297,8 @@ export class Engine {
   private wasmInstance: any = null;
   private devToolsEnabled = false;
   private notifyingDevTools = false;
+  private prepared = false;
+  private opfsStorage: OPFSStorage = new OPFSStorage();
 
   constructor(wasmInstance?: any) {
     this.wasmInstance = wasmInstance;
@@ -390,20 +393,126 @@ export class Engine {
     return this;
   }
 
-  public async prepare(): Promise<void> {
-    if (this.wasmInstance) {
+  private validateIRCompatibility(): void {
+    for (const clip of this.clips.values()) {
+      if (!clip.keyframes) continue;
+      for (const kf of clip.keyframes) {
+        if (kf.springConfig && kf.springConfig.mass !== undefined && kf.springConfig.mass !== 1.0) {
+          const massStr = Number.isInteger(kf.springConfig.mass) ? kf.springConfig.mass.toFixed(1) : kf.springConfig.mass.toString();
+          throw new Error(
+            `Clip "${clip.id}" keyframe at t=${kf.time} uses spring mass=${massStr}, but WASM core only supports mass=1.0. To fix, choose one: → Set mass to 1.0 → Use @keyframe/bake to pre-bake this clip → Use @keyframe/physics for real-time spring`
+          );
+        }
+        if (kf.interpolateConfig) {
+          const cfg = kf.interpolateConfig;
+          if (cfg.extrapolate || cfg.extrapolateLeft || cfg.extrapolateRight) {
+            throw new Error(
+              `Clip "${clip.id}" keyframe at t=${kf.time} uses extrapolate, but WASM core does not support extrapolate. To fix, choose one: → Remove extrapolate and clamp input manually → Use @keyframe/bake to pre-bake this clip`
+            );
+          }
+        }
+      }
+    }
+  }
+
+  public async prepare(options?: PrepareOptions): Promise<void> {
+    // Stage 1: Synchronous validation
+    options?.onProgress?.("validation");
+    this.validateIRCompatibility();
+
+    // Stage 2: WASM loading (if no existing instance)
+    if (!this.wasmInstance) {
+      options?.onProgress?.("wasm_loading");
+      const url = options?.wasmUrl || "https://cdn.jsdelivr.net/npm/@keyframe/core/pkg/keyframe_engine_bg.wasm";
+
+      const loadPromise = (async () => {
+        let instance: any = null;
+        let exports: any = null;
+
+        if (typeof WebAssembly !== "undefined" && typeof fetch !== "undefined") {
+          try {
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`Failed to fetch WASM: ${response.statusText}`);
+            }
+            if (WebAssembly.instantiateStreaming) {
+              try {
+                const res = await WebAssembly.instantiateStreaming(response.clone());
+                instance = res.instance;
+                exports = instance.exports;
+              } catch (e) {
+                const buffer = await response.arrayBuffer();
+                const res = await WebAssembly.instantiate(buffer);
+                instance = res.instance;
+                exports = instance.exports;
+              }
+            } else {
+              const buffer = await response.arrayBuffer();
+              const res = await WebAssembly.instantiate(buffer);
+              instance = res.instance;
+              exports = instance.exports;
+            }
+
+            this.wasmInstance = exports || instance;
+            if (exports && exports.memory) {
+              this.bindWasmMemory(exports.memory);
+            } else if (instance && instance.exports && instance.exports.memory) {
+              this.bindWasmMemory(instance.exports.memory);
+            }
+          } catch (fetchErr: any) {
+            console.warn("WASM loading failed, operating in JS fallback mode:", fetchErr?.message || fetchErr);
+          }
+        } else {
+          console.warn("Environment does not support WebAssembly or fetch, operating in JS fallback mode");
+        }
+      })();
+
+      const timeoutMs = 30000;
+      let timer: any = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error("WASM loading timeout"));
+        }, timeoutMs);
+      });
+
+      try {
+        await Promise.race([loadPromise, timeoutPromise]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    } else {
+      this.autoBindWasmMemory();
+    }
+
+    // Stage 3: OPFS Auto-Mount (if enabled)
+    if (options?.storage?.enabled !== false) {
+      options?.onProgress?.("opfs_mount");
+      try {
+        const mounted = await this.opfsStorage.mount();
+        if (mounted) {
+          await this.opfsStorage.buildFrameIndex();
+        }
+      } catch (err) {
+        console.warn("OPFS auto-mount failed, falling back to memory mode:", err);
+      }
+    }
+
+    // Stage 4: WASM internal prepare()
+    options?.onProgress?.("compiling");
+    if (this.wasmInstance && typeof this.wasmInstance.prepare === "function") {
       this.wasmInstance.prepare();
     }
+    this.prepared = true;
   }
 
   /**
    * Evaluates the engine animation state at `globalTime` (in milliseconds).
-   *
-   * Note: In WASM mode, this triggers WASM frame evaluation and returns low-level buffer metadata
-   * `{ count, ptr, len }`. If structured instance data with transform matrices is needed,
-   * call `getEvaluatedInstances(globalTime)` instead.
    */
-  public evaluateFrame(globalTime: number): any {
+  private evaluate(globalTime: number): any {
+    if (!this.prepared) {
+      throw new Error("Engine not prepared");
+    }
+
     let result: any = { count: this.instances.length };
     if (this.wasmInstance) {
       const count = this.wasmInstance.evaluate_frame(globalTime);
@@ -427,10 +536,22 @@ export class Engine {
    *
    * Each `EvaluatedInstance` includes `transformMatrix`, `opacity`, `visible`, and instance/clip identifiers.
    * @param globalTime The global time in milliseconds.
-   * @param skipEvaluate If `true`, re-evaluation of the WASM frame is skipped (if evaluateFrame was already called).
+   * @param skipEvaluate If `true`, re-evaluation of the WASM frame is skipped.
    */
   public getEvaluatedInstances(globalTime: number, skipEvaluate = false): EvaluatedInstance[] {
-    const evalResult = skipEvaluate ? { count: this.instances.length } : this.evaluateFrame(globalTime);
+    if (!this.prepared && !skipEvaluate) {
+      throw new Error("Engine not prepared");
+    }
+
+    // Cache-first lookup: if OPFS frame index contains cached bake for globalTime, return cached evaluated instances
+    if (this.opfsStorage.isMounted()) {
+      const cached = this.opfsStorage.getFrameFromIndex(globalTime);
+      if (cached && Array.isArray(cached)) {
+        return cached;
+      }
+    }
+
+    const evalResult = skipEvaluate ? { count: this.instances.length } : this.evaluate(globalTime);
     const result: EvaluatedInstance[] = [];
 
     if (this.wasmInstance) {

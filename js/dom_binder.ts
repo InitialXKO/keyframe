@@ -29,11 +29,6 @@ export class DOMAdapter {
     if (engine) {
       if (typeof engine.getEvaluatedInstances === "function") {
         evaluated = engine.getEvaluatedInstances(time);
-      } else if (typeof engine.evaluateFrame === "function") {
-        const res = engine.evaluateFrame(time);
-        if (Array.isArray(res)) {
-          evaluated = res;
-        }
       }
     }
 

@@ -136,6 +136,9 @@ const instance = new Instance("bounce_clip", "inst_1")
 engine.addClip(clip);
 engine.addInstances([instance]);
 
+// 零样板全异步加载初始化 (自动拉取/编译 WASM、绑定 memory、挂载 OPFS 缓存)
+await engine.prepare();
+
 // 评估全局毫秒时刻的动画帧并获取包含矩阵等完整数据的实例列表
 const evaluated = engine.getEvaluatedInstances(500);
 ```
