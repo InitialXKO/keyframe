@@ -1,0 +1,15 @@
+{
+  "name": "@keyframe/physics",
+  "version": "1.0.0",
+  "description": "@keyframe/physics — Real-time Physics & Spring Engine Adapter",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "peerDependencies": {
+    "@keyframe/core": "^1.0.0"
+  }
+}
