@@ -39,7 +39,7 @@ async function initLivePhysicsDemo() {
     springsY.push(new RealTimeSpring({ mass: cfg.mass, damping: cfg.damping, stiffness: cfg.stiffness }));
   }
 
-  await engine.prepare();
+  await engine.prepare({ wasmUrl: '../../pkg/keyframe_engine_bg.wasm' });
 
   let targetX = 0;
   let targetY = 0;

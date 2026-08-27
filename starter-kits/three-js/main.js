@@ -41,7 +41,7 @@ async function initThreeDemo() {
   const mockMesh = new MockThreeObject();
 
   engine.addInstances([new Instance('spin_mesh', 'mesh_1')]);
-  await engine.prepare();
+  await engine.prepare({ wasmUrl: '../../pkg/keyframe_engine_bg.wasm' });
 
   // 1. Register scene to obtain Token Credential (AdapterContext)
   let isRasterized = false;

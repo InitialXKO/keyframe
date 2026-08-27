@@ -35,7 +35,7 @@ async function initDOMDemo() {
       instList.push(new Instance('bounce', `box_${i}`).delay(i * 20));
     }
     engine.addInstances(instList);
-    await engine.prepare();
+    await engine.prepare({ wasmUrl: '../../pkg/keyframe_engine_bg.wasm' });
 
     status.innerText = `Active Elements: ${count}`;
   }
