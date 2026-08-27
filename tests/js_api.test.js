@@ -291,7 +291,9 @@ test("Engine.prepare() compatibility validation and unprepared guardrail", async
   await assert.rejects(async () => {
     await massEngine.prepare();
   }, (err) => {
-    assert.match(err.message, /Clip "bad_mass" keyframe at t=0 uses spring mass=2\.0, but WASM core only supports mass=1\.0\. To fix, choose one: → Set mass to 1\.0 → Use @keyframe\/bake to pre-bake this clip → Use @keyframe\/physics for real-time spring/);
+    assert.ok(err instanceof TypeError);
+    assert.match(err.message, /Clip "bad_mass" keyframe at t=0 uses spring mass=2\.0/);
+    assert.match(err.message, /Use @keyframe\/physics for real-time interactive springs/);
     return true;
   });
 

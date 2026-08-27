@@ -19,6 +19,7 @@
   - [4. DOM & CSS 适配器 (@keyframe/dom)](#4-dom--css-适配器-keyframedom)
   - [5. 播放控制器 (@keyframe/controller)](#5-播放控制器-keyframecontroller)
   - [6. Remotion 兼容层](#6-remotion-兼容层)
+  - [7. 实时物理 (@keyframe/physics)](#7-实时物理-keyframephysics)
 - [ 开发与测试](#-开发与测试)
 - [ DevTools 扩展与 Starter Kits](#-devtools-扩展与-starter-kits)
 - [ 许可证](#-许可证)
@@ -51,6 +52,7 @@
 | **`@keyframe/webgpu`** | WebGPU Buffer 直写适配器，具备对齐校验、溢出检查与设备丢失感知的三层边界防护 |
 | **`@keyframe/dom`** | DOM & CSS `matrix3d()` 批量绑定适配器，内置 performance guardrail |
 | **`@keyframe/math`** | 层级树矩阵级联计算与拓扑排序工具 (`HierarchyResolver`) |
+| **`@keyframe/physics`** | 实时交互弹簧物理引擎 (`RealTimeSpring`)，支持 `mass/damping/stiffness` 实时参数计算 |
 
 ---
 
@@ -225,6 +227,43 @@ const opacity = interpolate(frame, [0, 30], [0, 1], { extrapolateRight: "clamp" 
 
 ---
 
+### 7. 实时物理 (`@keyframe/physics`)
+
+物理计算分为两类使用场景：
+
+| 模式 | 场景与适用范围 | 实例规模 | 核心机制 |
+| :--- | :--- | :--- | :--- |
+| **烘焙模式** | 离线 / 视频渲染 / 大规模动画 | >1000 实例 | WASM 批量评估，固定按 `mass=1.0` 吞吐优先计算 |
+| **实时模式** | 拖拽回弹 / 手势跟随 / 实时游戏交互 | <200 实例 | `@keyframe/physics` 纯 JS 延迟优先计算，支持完整 `mass/damping/stiffness` |
+
+```typescript
+import { RealTimeSpring } from "@keyframe/physics";
+import { domAdapter } from "@keyframe/dom";
+import { Engine } from "@keyframe/core";
+
+// 创建带完整物理参数的实时弹簧
+const springX = new RealTimeSpring({ mass: 1.2, damping: 12, stiffness: 150 });
+let targetX = 0;
+
+function onMouseMove(e: MouseEvent) {
+  targetX = e.clientX - 200;
+}
+
+function animate(now: number, dt: number) {
+  // 单步推进弹簧物理计算
+  const currentX = springX.step(targetX, dt);
+
+  // 获取 Engine 评估矩阵，叠加弹簧物理位移
+  const instances = engine.getEvaluatedInstances(now);
+  instances[0].transformMatrix[12] += currentX;
+
+  domAdapter.batchApply(elements, now, { engine });
+  requestAnimationFrame(animate);
+}
+```
+
+---
+
 ## 开发与测试
 
 ```bash
@@ -248,6 +287,7 @@ npm test
   - `starter-kits/three-js`: Three.js 场景同步模版
   - `starter-kits/dom-css`: DOM/CSS3D 属性驱动模版
   - `starter-kits/remotion-compat`: Remotion 代码组件适配模版
+  - `starter-kits/live-physics`: 实时手势拖拽与弹簧物理回弹模版
 
 ---
 

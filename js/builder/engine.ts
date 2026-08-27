@@ -399,8 +399,8 @@ export class Engine {
       for (const kf of clip.keyframes) {
         if (kf.springConfig && kf.springConfig.mass !== undefined && kf.springConfig.mass !== 1.0) {
           const massStr = Number.isInteger(kf.springConfig.mass) ? kf.springConfig.mass.toFixed(1) : kf.springConfig.mass.toString();
-          throw new Error(
-            `Clip "${clip.id}" keyframe at t=${kf.time} uses spring mass=${massStr}, but WASM core only supports mass=1.0. To fix, choose one: → Set mass to 1.0 → Use @keyframe/bake to pre-bake this clip → Use @keyframe/physics for real-time spring`
+          throw new TypeError(
+            `[KeyframeEngine] Clip "${clip.id}" keyframe at t=${kf.time} uses spring mass=${massStr}.\nWASM core only supports mass=1.0 for batch evaluation.\n\nTo resolve:\n  1. Bake the animation via engine.bakeRange(), then use baked data (recommended for video/offline rendering).\n  2. Use @keyframe/physics for real-time interactive springs (max ~200 instances).\n  3. Set mass to 1.0 to match WASM behavior.`
           );
         }
         if (kf.interpolateConfig) {
