@@ -36,7 +36,7 @@ async function initWebGPU() {
     instances.push(new Instance('box_spin', `box_${i}`).delay(i * 40));
   }
   engine.addInstances(instances);
-  await engine.prepare();
+  await engine.prepare({ wasmUrl: 'https://cdn.jsdelivr.net/npm/@keyframe/core/pkg/keyframe_engine_bg.wasm' });
 
   // Create GPU Storage Buffer for 80-byte per instance data
   const bufferSize = instances.length * 80;
