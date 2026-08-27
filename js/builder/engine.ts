@@ -1,8 +1,8 @@
-import { AnimationClipData, BlendMode, CubicBezierParams, Easing, EngineIR, EvaluatedInstance, InstanceData, KeyframeData, PrepareOptions, TimelineNodeData, TransformData } from "./types.js";
+import { AnimationClipData, BlendMode, CubicBezierParams, Easing, EngineIR, EvaluatedFrameResult, EvaluatedInstance, InstanceData, KeyframeData, PrepareOptions, TimelineNodeData, TransformData } from "./types.js";
 import { Clip } from "./clip.js";
 import { OPFSStorage } from "../opfs_storage.js";
 
-export { EvaluatedInstance, PrepareOptions } from "./types.js";
+export { EvaluatedInstance, EvaluatedFrameResult, PrepareOptions } from "./types.js";
 import { Instance } from "./instance.js";
 
 function solveCubicBezier(p1x: number, p1y: number, p2x: number, p2y: number, t: number): number {
@@ -299,6 +299,8 @@ export class Engine {
   private notifyingDevTools = false;
   private prepared = false;
   private opfsStorage: OPFSStorage = new OPFSStorage();
+  private jsEvaluatedBuffer?: Float32Array;
+  private lastEvaluatedFrameResult?: EvaluatedFrameResult;
 
   constructor(wasmInstance?: any) {
     this.wasmInstance = wasmInstance;
@@ -510,25 +512,151 @@ export class Engine {
     this.prepared = true;
   }
 
+  private evaluateWasmFrame(globalTime: number): EvaluatedFrameResult {
+    const count = this.wasmInstance.evaluate_frame(globalTime);
+    this.autoBindWasmMemory();
+    const memory = this.wasmInstance.memory ?? (globalThis as any).wasmMemory ?? this.wasmInstance.__wasm?.memory;
+    if (!memory || !memory.buffer) {
+      throw new ReferenceError(
+        "WASM memory not bound. Call Engine.bindWasmMemory(memory) first, " +
+        "or set globalThis.wasmMemory = wasmExports.memory after initSync()."
+      );
+    }
+
+    const ptr = this.wasmInstance.get_instance_buffer_ptr() ?? 0;
+    const len = this.wasmInstance.get_instance_buffer_byte_length() ?? (count * 80);
+    const floatsPerInst = 20;
+    const memoryBuffer: ArrayBuffer = memory.buffer;
+    const floatView = new Float32Array(memoryBuffer, ptr, count * floatsPerInst);
+    const uintView = new Uint32Array(memoryBuffer, ptr, count * floatsPerInst);
+
+    return {
+      view: floatView,
+      uintView,
+      count,
+      ptr,
+      byteOffset: ptr,
+      byteLength: len,
+      floatsPerInstance: floatsPerInst,
+    };
+  }
+
+  private evaluateJSFrame(globalTime: number): EvaluatedFrameResult {
+    const count = this.instances.length;
+    const floatsPerInst = 20;
+    const totalFloats = count * floatsPerInst;
+
+    if (!this.jsEvaluatedBuffer || this.jsEvaluatedBuffer.length < totalFloats) {
+      this.jsEvaluatedBuffer = new Float32Array(totalFloats);
+    }
+    const floatView = this.jsEvaluatedBuffer.subarray(0, totalFloats);
+    const uintView = new Uint32Array(floatView.buffer, floatView.byteOffset, totalFloats);
+
+    const scheduledMap = this.rootTimeline ? flattenTimeline(this.rootTimeline) : new Map<string, number>();
+    const clipMap = this.clips;
+    const clipIndexMap = new Map<string, number>();
+    let clipIdxCounter = 0;
+    for (const [clipId] of clipMap) {
+      clipIndexMap.set(clipId, clipIdxCounter++);
+    }
+
+    for (let i = 0; i < this.instances.length; i++) {
+      const inst = this.instances[i];
+      const clip = clipMap.get(inst.clip_id);
+      const clipIdx = clipIndexMap.get(inst.clip_id) ?? i;
+      const offset = i * floatsPerInst;
+
+      const isVisible = inst.visible ?? true;
+      let delay = inst.delay ?? 0;
+      if (scheduledMap.has(inst.id)) {
+        delay += scheduledMap.get(inst.id)!;
+      }
+
+      if (!isVisible || globalTime < delay || !clip) {
+        floatView[offset + 0] = 1; floatView[offset + 1] = 0; floatView[offset + 2] = 0; floatView[offset + 3] = 0;
+        floatView[offset + 4] = 0; floatView[offset + 5] = 1; floatView[offset + 6] = 0; floatView[offset + 7] = 0;
+        floatView[offset + 8] = 0; floatView[offset + 9] = 0; floatView[offset + 10] = 1; floatView[offset + 11] = 0;
+        floatView[offset + 12] = 0; floatView[offset + 13] = 0; floatView[offset + 14] = 0; floatView[offset + 15] = 1;
+        floatView[offset + 16] = 0.0;
+        uintView[offset + 17] = 0;
+        uintView[offset + 18] = clipIdx;
+        floatView[offset + 19] = 0;
+        continue;
+      }
+
+      const timeRemappingSpeed = inst.time_remapping_speed ?? 1.0;
+      const durationScale = inst.duration_scale || 1.0;
+      const clipDuration = clip.duration || 0.001;
+
+      const elapsed = (globalTime - delay) * timeRemappingSpeed;
+      let localTime = 0;
+      if (elapsed < 0) {
+        localTime = (clipDuration + (elapsed % clipDuration)) / durationScale;
+      } else {
+        localTime = elapsed / durationScale;
+      }
+
+      const { transform: clipTransform, opacity: clipOpacity } = evaluateClip(clip, localTime);
+
+      const initialMat = transformToMatrix(inst.initial_transform ?? getDefaultTransform());
+      const clipMat = transformToMatrix(clipTransform);
+
+      let finalMat: Float32Array;
+      const blendMode = inst.blend_mode ?? BlendMode.Override;
+      if (blendMode === BlendMode.Override) {
+        finalMat = multiplyMatrices(initialMat, clipMat);
+      } else {
+        // Additive blend mode: initial_mat + (clip_mat - Mat4::IDENTITY)
+        finalMat = new Float32Array(16);
+        for (let k = 0; k < 16; k++) {
+          const identityVal = k % 5 === 0 ? 1 : 0;
+          finalMat[k] = initialMat[k] + (clipMat[k] - identityVal);
+        }
+      }
+
+      for (let k = 0; k < 16; k++) {
+        floatView[offset + k] = finalMat[k];
+      }
+      const instOpacity = inst.opacity ?? 1.0;
+      floatView[offset + 16] = instOpacity * clipOpacity;
+      uintView[offset + 17] = 1;
+      uintView[offset + 18] = clipIdx;
+      floatView[offset + 19] = 0;
+    }
+
+    return {
+      view: floatView,
+      uintView,
+      count,
+      ptr: 0,
+      byteOffset: floatView.byteOffset,
+      byteLength: floatView.byteLength,
+      floatsPerInstance: floatsPerInst,
+    };
+  }
+
   /**
    * Evaluates the engine animation state at `globalTime` (in milliseconds).
+   * Directly returns a zero-copy raw TypedArray view pointing to WASM memory buffer (or contiguous JS buffer),
+   * along with pointer/offset and instance count.
    */
-  private evaluate(globalTime: number): any {
+  public evaluateFrame(globalTime: number): EvaluatedFrameResult {
     if (!this.prepared) {
       throw new Error("Engine not prepared");
     }
 
-    let result: any = { count: this.instances.length };
+    let result: EvaluatedFrameResult;
     if (this.wasmInstance) {
-      const count = this.wasmInstance.evaluate_frame(globalTime);
-      const ptr = this.wasmInstance.get_instance_buffer_ptr();
-      const len = this.wasmInstance.get_instance_buffer_byte_length();
-      result = { count, ptr, len };
+      result = this.evaluateWasmFrame(globalTime);
+    } else {
+      result = this.evaluateJSFrame(globalTime);
     }
+
+    this.lastEvaluatedFrameResult = result;
 
     if (this.devToolsEnabled && !this.notifyingDevTools) {
       this.notifyingDevTools = true;
-      const evaluated = this.getEvaluatedInstances(globalTime, true);
+      const evaluated = this.getEvaluatedInstances(globalTime, true, result);
       this.notifyDevTools(globalTime, evaluated);
       this.notifyingDevTools = false;
     }
@@ -539,11 +667,17 @@ export class Engine {
   /**
    * Evaluates and returns the array of `EvaluatedInstance` objects at `globalTime` (in milliseconds).
    *
-   * Each `EvaluatedInstance` includes `transformMatrix`, `opacity`, `visible`, and instance/clip identifiers.
+   * Each `EvaluatedInstance` includes `transformMatrix` (a zero-copy subarray view over the evaluation buffer),
+   * `opacity`, `visible`, and instance/clip identifiers.
    * @param globalTime The global time in milliseconds.
    * @param skipEvaluate If `true`, re-evaluation of the WASM frame is skipped.
+   * @param evalResultParam Optional pre-computed evaluation frame result.
    */
-  public getEvaluatedInstances(globalTime: number, skipEvaluate = false): EvaluatedInstance[] {
+  public getEvaluatedInstances(
+    globalTime: number,
+    skipEvaluate = false,
+    evalResultParam?: EvaluatedFrameResult
+  ): EvaluatedInstance[] {
     if (!this.prepared && !skipEvaluate) {
       throw new Error("Engine not prepared");
     }
@@ -556,125 +690,44 @@ export class Engine {
       }
     }
 
-    const evalResult = skipEvaluate ? { count: this.instances.length } : this.evaluate(globalTime);
+    let evalResult = evalResultParam;
+    if (!evalResult) {
+      if (skipEvaluate) {
+        if (this.lastEvaluatedFrameResult) {
+          evalResult = this.lastEvaluatedFrameResult;
+        } else if (this.wasmInstance && this.prepared) {
+          evalResult = this.evaluateWasmFrame(globalTime);
+        } else {
+          evalResult = this.evaluateJSFrame(globalTime);
+        }
+      } else {
+        evalResult = this.evaluateFrame(globalTime);
+      }
+    }
+
     const result: EvaluatedInstance[] = [];
+    const count = evalResult.count;
+    const floatView = evalResult.view;
+    const uintView = evalResult.uintView;
+    const floatsPerInst = evalResult.floatsPerInstance || 20;
 
-    if (this.wasmInstance) {
-      this.autoBindWasmMemory();
-      const memory = this.wasmInstance.memory ?? (globalThis as any).wasmMemory ?? this.wasmInstance.__wasm?.memory;
-      if (!memory || !memory.buffer) {
-        throw new ReferenceError(
-          "WASM memory not bound. Call Engine.bindWasmMemory(memory) first, " +
-          "or set globalThis.wasmMemory = wasmExports.memory after initSync()."
-        );
-      }
+    for (let i = 0; i < count; i++) {
+      const offset = i * floatsPerInst;
+      // ZERO-COPY: Use subarray instead of slice to avoid creating extra Float32Array copies
+      const transformMatrix = floatView.subarray(offset, offset + 16);
+      const opacity = floatView[offset + 16];
+      const visible = uintView ? uintView[offset + 17] === 1 : floatView[offset + 17] === 1;
+      const clipIndex = uintView ? uintView[offset + 18] : floatView[offset + 18];
+      const instData = this.instances[i];
 
-      if (evalResult.ptr != null && evalResult.len > 0) {
-        const memoryBuffer: ArrayBuffer = memory.buffer;
-        const count = evalResult.count;
-        const floatsPerInst = 20;
-        const floatView = new Float32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
-        const uintView = new Uint32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
-
-        for (let i = 0; i < count; i++) {
-          const offset = i * floatsPerInst;
-          const transformMatrix = floatView.slice(offset, offset + 16);
-          const opacity = floatView[offset + 16];
-          const visible = uintView[offset + 17] === 1;
-          const clipIndex = uintView[offset + 18];
-          const instData = this.instances[i];
-
-          result.push({
-            id: instData?.id,
-            clipId: instData?.clip_id,
-            transformMatrix,
-            opacity,
-            visible,
-            clipIndex,
-          });
-        }
-      }
-    } else {
-      // Fallback JS evaluation matching Rust EngineState evaluation logic 1:1
-      const scheduledMap = this.rootTimeline ? flattenTimeline(this.rootTimeline) : new Map<string, number>();
-
-      const clipMap = this.clips;
-      const clipIndexMap = new Map<string, number>();
-      let clipIdxCounter = 0;
-      for (const [clipId] of clipMap) {
-        clipIndexMap.set(clipId, clipIdxCounter++);
-      }
-
-      for (let i = 0; i < this.instances.length; i++) {
-        const inst = this.instances[i];
-        const clip = clipMap.get(inst.clip_id);
-        const clipIdx = clipIndexMap.get(inst.clip_id) ?? i;
-
-        const isVisible = inst.visible ?? true;
-        let delay = inst.delay ?? 0;
-        if (scheduledMap.has(inst.id)) {
-          delay += scheduledMap.get(inst.id)!;
-        }
-
-        if (!isVisible || globalTime < delay || !clip) {
-          const identityMatrix = new Float32Array([
-            1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            0, 0, 0, 1,
-          ]);
-          result.push({
-            id: inst.id,
-            clipId: inst.clip_id,
-            transformMatrix: identityMatrix,
-            opacity: 0.0,
-            visible: false,
-            clipIndex: clipIdx,
-          });
-          continue;
-        }
-
-        const timeRemappingSpeed = inst.time_remapping_speed ?? 1.0;
-        const durationScale = inst.duration_scale || 1.0;
-        const clipDuration = clip.duration || 0.001;
-
-        const elapsed = (globalTime - delay) * timeRemappingSpeed;
-        let localTime = 0;
-        if (elapsed < 0) {
-          localTime = (clipDuration + (elapsed % clipDuration)) / durationScale;
-        } else {
-          localTime = elapsed / durationScale;
-        }
-
-        const { transform: clipTransform, opacity: clipOpacity } = evaluateClip(clip, localTime);
-
-        const initialMat = transformToMatrix(inst.initial_transform ?? getDefaultTransform());
-        const clipMat = transformToMatrix(clipTransform);
-
-        let finalMat: Float32Array;
-        const blendMode = inst.blend_mode ?? BlendMode.Override;
-        if (blendMode === BlendMode.Override) {
-          finalMat = multiplyMatrices(initialMat, clipMat);
-        } else {
-          // Additive blend mode: initial_mat + (clip_mat - Mat4::IDENTITY)
-          finalMat = new Float32Array(16);
-          for (let k = 0; k < 16; k++) {
-            const identityVal = k % 5 === 0 ? 1 : 0;
-            finalMat[k] = initialMat[k] + (clipMat[k] - identityVal);
-          }
-        }
-
-        const instOpacity = inst.opacity ?? 1.0;
-
-        result.push({
-          id: inst.id,
-          clipId: inst.clip_id,
-          transformMatrix: finalMat,
-          opacity: instOpacity * clipOpacity,
-          visible: true,
-          clipIndex: clipIdx,
-        });
-      }
+      result.push({
+        id: instData?.id,
+        clipId: instData?.clip_id,
+        transformMatrix,
+        opacity,
+        visible,
+        clipIndex,
+      });
     }
 
     return result;

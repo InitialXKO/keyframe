@@ -1,5 +1,250 @@
+import { BlendMode, Easing } from "./types.js";
 import { Clip } from "./clip.js";
+import { OPFSStorage } from "../opfs_storage.js";
 import { Instance } from "./instance.js";
+function solveCubicBezier(p1x, p1y, p2x, p2y, t) {
+    if (t <= 0)
+        return 0;
+    if (t >= 1)
+        return 1;
+    let u = t;
+    for (let i = 0; i < 8; i++) {
+        const oneMinusU = 1.0 - u;
+        const x = 3.0 * oneMinusU * oneMinusU * u * p1x + 3.0 * oneMinusU * u * u * p2x + u * u * u;
+        const dx = 3.0 * oneMinusU * oneMinusU * p1x + 6.0 * oneMinusU * u * (p2x - p1x) + 3.0 * u * u * (1.0 - p2x);
+        if (Math.abs(dx) < 1e-7)
+            break;
+        const err = x - t;
+        u -= err / dx;
+        u = Math.max(0, Math.min(1, u));
+    }
+    const oneMinusU = 1.0 - u;
+    return 3.0 * oneMinusU * oneMinusU * u * p1y + 3.0 * oneMinusU * u * u * p2y + u * u * u;
+}
+function evaluateEasing(easing, cubicParams, t) {
+    const clampedT = Math.max(0, Math.min(1, t));
+    switch (easing) {
+        case Easing.Linear:
+            return clampedT;
+        case Easing.Ease:
+            return solveCubicBezier(0.25, 0.1, 0.25, 1.0, clampedT);
+        case Easing.EaseIn:
+            return solveCubicBezier(0.42, 0.0, 1.0, 1.0, clampedT);
+        case Easing.EaseOut:
+            return solveCubicBezier(0.0, 0.0, 0.58, 1.0, clampedT);
+        case Easing.EaseInOut:
+            return solveCubicBezier(0.42, 0.0, 0.58, 1.0, clampedT);
+        case Easing.CubicBezier:
+            if (cubicParams) {
+                return solveCubicBezier(cubicParams.p1x, cubicParams.p1y, cubicParams.p2x, cubicParams.p2y, clampedT);
+            }
+            return clampedT;
+        case Easing.Step:
+            return clampedT >= 1.0 ? 1.0 : 0.0;
+        default:
+            return clampedT;
+    }
+}
+function normalizeQuat(q) {
+    const len = Math.hypot(q[0], q[1], q[2], q[3]);
+    if (len < 1e-6) {
+        return [0, 0, 0, 1];
+    }
+    return [q[0] / len, q[1] / len, q[2] / len, q[3] / len];
+}
+function slerpQuat(a, b, t) {
+    let q1 = normalizeQuat(a);
+    let q2 = normalizeQuat(b);
+    let dot = q1[0] * q2[0] + q1[1] * q2[1] + q1[2] * q2[2] + q1[3] * q2[3];
+    if (dot < 0) {
+        q2 = [-q2[0], -q2[1], -q2[2], -q2[3]];
+        dot = -dot;
+    }
+    if (dot > 0.9995) {
+        const res = [
+            q1[0] + t * (q2[0] - q1[0]),
+            q1[1] + t * (q2[1] - q1[1]),
+            q1[2] + t * (q2[2] - q1[2]),
+            q1[3] + t * (q2[3] - q1[3]),
+        ];
+        return normalizeQuat(res);
+    }
+    const theta0 = Math.acos(dot);
+    const theta = theta0 * t;
+    const sinTheta = Math.sin(theta);
+    const sinTheta0 = Math.sin(theta0);
+    const s0 = Math.cos(theta) - (dot * sinTheta) / sinTheta0;
+    const s1 = sinTheta / sinTheta0;
+    return [
+        s0 * q1[0] + s1 * q2[0],
+        s0 * q1[1] + s1 * q2[1],
+        s0 * q1[2] + s1 * q2[2],
+        s0 * q1[3] + s1 * q2[3],
+    ];
+}
+function interpolateTransform(a, b, factor) {
+    const translation = [
+        a.translation[0] + (b.translation[0] - a.translation[0]) * factor,
+        a.translation[1] + (b.translation[1] - a.translation[1]) * factor,
+        a.translation[2] + (b.translation[2] - a.translation[2]) * factor,
+    ];
+    const scale = [
+        a.scale[0] + (b.scale[0] - a.scale[0]) * factor,
+        a.scale[1] + (b.scale[1] - a.scale[1]) * factor,
+        a.scale[2] + (b.scale[2] - a.scale[2]) * factor,
+    ];
+    const origin = [
+        a.origin[0] + (b.origin[0] - a.origin[0]) * factor,
+        a.origin[1] + (b.origin[1] - a.origin[1]) * factor,
+        a.origin[2] + (b.origin[2] - a.origin[2]) * factor,
+    ];
+    const rotation_quat = slerpQuat(a.rotation_quat, b.rotation_quat, factor);
+    return { translation, rotation_quat, scale, origin };
+}
+function getDefaultTransform() {
+    return {
+        translation: [0, 0, 0],
+        rotation_quat: [0, 0, 0, 1],
+        scale: [1, 1, 1],
+        origin: [0, 0, 0],
+    };
+}
+function transformToMatrix(t) {
+    const tx = t.translation[0];
+    const ty = t.translation[1];
+    const tz = t.translation[2];
+    const ox = t.origin[0];
+    const oy = t.origin[1];
+    const oz = t.origin[2];
+    const [qx, qy, qz, qw] = normalizeQuat(t.rotation_quat);
+    const sx = t.scale[0];
+    const sy = t.scale[1];
+    const sz = t.scale[2];
+    // Rotation matrix from quaternion
+    const r00 = 1 - 2 * (qy * qy + qz * qz);
+    const r01 = 2 * (qx * qy - qz * qw);
+    const r02 = 2 * (qx * qz + qy * qw);
+    const r10 = 2 * (qx * qy + qz * qw);
+    const r11 = 1 - 2 * (qx * qx + qz * qz);
+    const r12 = 2 * (qy * qz - qx * qw);
+    const r20 = 2 * (qx * qz - qy * qw);
+    const r21 = 2 * (qy * qz + qx * qw);
+    const r22 = 1 - 2 * (qx * qx + qy * qy);
+    // Rotation * Scale
+    const rs00 = r00 * sx;
+    const rs01 = r01 * sy;
+    const rs02 = r02 * sz;
+    const rs10 = r10 * sx;
+    const rs11 = r11 * sy;
+    const rs12 = r12 * sz;
+    const rs20 = r20 * sx;
+    const rs21 = r21 * sy;
+    const rs22 = r22 * sz;
+    // Translation * Origin * R * S * Origin^(-1)
+    // T_final = Translation + Origin - (R * S * Origin)
+    const pos_x = tx + ox - (rs00 * ox + rs01 * oy + rs02 * oz);
+    const pos_y = ty + oy - (rs10 * ox + rs11 * oy + rs12 * oz);
+    const pos_z = tz + oz - (rs20 * ox + rs21 * oy + rs22 * oz);
+    // Return column-major 4x4 matrix
+    return new Float32Array([
+        rs00, rs10, rs20, 0,
+        rs01, rs11, rs21, 0,
+        rs02, rs12, rs22, 0,
+        pos_x, pos_y, pos_z, 1,
+    ]);
+}
+function multiplyMatrices(a, b) {
+    const out = new Float32Array(16);
+    for (let col = 0; col < 4; col++) {
+        for (let row = 0; row < 4; row++) {
+            out[col * 4 + row] =
+                a[0 * 4 + row] * b[col * 4 + 0] +
+                    a[1 * 4 + row] * b[col * 4 + 1] +
+                    a[2 * 4 + row] * b[col * 4 + 2] +
+                    a[3 * 4 + row] * b[col * 4 + 3];
+        }
+    }
+    return out;
+}
+function evaluateClip(clip, localTime) {
+    if (!clip.keyframes || clip.keyframes.length === 0) {
+        return { transform: getDefaultTransform(), opacity: 1.0 };
+    }
+    if (clip.keyframes.length === 1) {
+        const kf = clip.keyframes[0];
+        return { transform: kf.transform ?? getDefaultTransform(), opacity: kf.opacity ?? 1.0 };
+    }
+    // Sort keyframes by time
+    const sortedKeyframes = [...clip.keyframes].sort((a, b) => a.time - b.time);
+    const duration = clip.duration;
+    let effectiveTime = 0;
+    if (duration > 0) {
+        const iterations = clip.iterations ?? 1;
+        if (!isFinite(iterations)) {
+            effectiveTime = localTime % duration;
+            if (effectiveTime < 0)
+                effectiveTime += duration;
+        }
+        else if (localTime >= duration * iterations) {
+            effectiveTime = duration;
+        }
+        else {
+            effectiveTime = localTime % duration;
+            if (effectiveTime < 0)
+                effectiveTime += duration;
+        }
+    }
+    if (effectiveTime <= sortedKeyframes[0].time) {
+        const kf = sortedKeyframes[0];
+        return { transform: kf.transform ?? getDefaultTransform(), opacity: kf.opacity ?? 1.0 };
+    }
+    const lastIdx = sortedKeyframes.length - 1;
+    if (effectiveTime >= sortedKeyframes[lastIdx].time) {
+        const kf = sortedKeyframes[lastIdx];
+        return { transform: kf.transform ?? getDefaultTransform(), opacity: kf.opacity ?? 1.0 };
+    }
+    for (let i = 0; i < lastIdx; i++) {
+        const kfCurr = sortedKeyframes[i];
+        const kfNext = sortedKeyframes[i + 1];
+        if (effectiveTime >= kfCurr.time && effectiveTime <= kfNext.time) {
+            const segDuration = kfNext.time - kfCurr.time;
+            if (segDuration <= 0.0001) {
+                return { transform: kfNext.transform ?? getDefaultTransform(), opacity: kfNext.opacity ?? 1.0 };
+            }
+            const linearT = (effectiveTime - kfCurr.time) / segDuration;
+            const easedT = evaluateEasing(kfCurr.easing ?? Easing.Linear, kfCurr.cubic_params, linearT);
+            const currTrans = kfCurr.transform ?? getDefaultTransform();
+            const nextTrans = kfNext.transform ?? getDefaultTransform();
+            const currOpacity = kfCurr.opacity ?? 1.0;
+            const nextOpacity = kfNext.opacity ?? 1.0;
+            const transform = interpolateTransform(currTrans, nextTrans, easedT);
+            const opacity = currOpacity + (nextOpacity - currOpacity) * easedT;
+            return { transform, opacity };
+        }
+    }
+    const kf = sortedKeyframes[lastIdx];
+    return { transform: kf.transform ?? getDefaultTransform(), opacity: kf.opacity ?? 1.0 };
+}
+function flattenTimeline(root) {
+    const map = new Map();
+    function traverse(node, parentTime) {
+        const nodeStart = parentTime + node.start_time;
+        if (node.instance_id) {
+            map.set(node.instance_id, nodeStart);
+        }
+        let currentChildStart = nodeStart;
+        if (node.children) {
+            for (const child of node.children) {
+                traverse(child, currentChildStart);
+                if (!node.is_parallel) {
+                    currentChildStart += child.duration;
+                }
+            }
+        }
+    }
+    traverse(root, 0);
+    return map;
+}
 export class Engine {
     clips = new Map();
     instances = [];
@@ -7,11 +252,57 @@ export class Engine {
     wasmInstance = null;
     devToolsEnabled = false;
     notifyingDevTools = false;
+    prepared = false;
+    opfsStorage = new OPFSStorage();
+    jsEvaluatedBuffer;
+    lastEvaluatedFrameResult;
     constructor(wasmInstance) {
         this.wasmInstance = wasmInstance;
+        this.autoBindWasmMemory();
     }
     setWasmInstance(wasm) {
         this.wasmInstance = wasm;
+        this.autoBindWasmMemory();
+    }
+    bindWasmMemory(memory) {
+        const mem = this.resolveMemory(memory);
+        if (this.wasmInstance) {
+            this.wasmInstance.memory = mem;
+        }
+        globalThis.wasmMemory = mem;
+        return this;
+    }
+    setWasmMemory(memory) {
+        return this.bindWasmMemory(memory);
+    }
+    static bindWasmMemory(memory) {
+        const mem = memory?.buffer ? memory : (memory?.memory || memory);
+        globalThis.wasmMemory = mem;
+    }
+    resolveMemory(mem) {
+        if (!mem)
+            return null;
+        if (mem.buffer)
+            return mem;
+        if (mem.memory?.buffer)
+            return mem.memory;
+        if (mem.__wasm?.memory?.buffer)
+            return mem.__wasm.memory;
+        return null;
+    }
+    autoBindWasmMemory() {
+        if (!this.wasmInstance)
+            return;
+        if (!this.wasmInstance.memory) {
+            const resolved = this.resolveMemory(this.wasmInstance) ||
+                this.resolveMemory(globalThis.wasmMemory);
+            if (resolved) {
+                this.wasmInstance.memory = resolved;
+            }
+        }
+        if (this.wasmInstance.memory && !globalThis.wasmMemory) {
+            globalThis.wasmMemory = this.wasmInstance.memory;
+        }
     }
     enableDevTools() {
         this.devToolsEnabled = true;
@@ -47,74 +338,315 @@ export class Engine {
         }
         return this;
     }
-    async prepare() {
-        if (this.wasmInstance) {
-            this.wasmInstance.prepare();
+    validateIRCompatibility() {
+        for (const clip of this.clips.values()) {
+            if (!clip.keyframes)
+                continue;
+            for (const kf of clip.keyframes) {
+                if (kf.springConfig && kf.springConfig.mass !== undefined && kf.springConfig.mass !== 1.0) {
+                    const massStr = Number.isInteger(kf.springConfig.mass) ? kf.springConfig.mass.toFixed(1) : kf.springConfig.mass.toString();
+                    throw new TypeError(`[KeyframeEngine] Clip "${clip.id}" keyframe at t=${kf.time} uses spring mass=${massStr}.\nWASM core only supports mass=1.0 for batch evaluation.\n\nTo resolve:\n  1. Bake the animation via engine.bakeRange(), then use baked data (recommended for video/offline rendering).\n  2. Use @keyframe/physics for real-time interactive springs (max ~200 instances).\n  3. Set mass to 1.0 to match WASM behavior.`);
+                }
+                if (kf.interpolateConfig) {
+                    const cfg = kf.interpolateConfig;
+                    if (cfg.extrapolate || cfg.extrapolateLeft || cfg.extrapolateRight) {
+                        throw new Error(`Clip "${clip.id}" keyframe at t=${kf.time} uses extrapolate, but WASM core does not support extrapolate. To fix, choose one: → Remove extrapolate and clamp input manually → Use @keyframe/bake to pre-bake this clip`);
+                    }
+                }
+            }
         }
     }
-    evaluateFrame(globalTime) {
-        let result = { count: this.instances.length };
-        if (this.wasmInstance) {
-            const count = this.wasmInstance.evaluate_frame(globalTime);
-            const ptr = this.wasmInstance.get_instance_buffer_ptr();
-            const len = this.wasmInstance.get_instance_buffer_byte_length();
-            result = { count, ptr, len };
+    async prepare(options) {
+        // Stage 1: Synchronous validation
+        options?.onProgress?.("validation");
+        this.validateIRCompatibility();
+        // Stage 2: WASM loading (if no existing instance)
+        if (!this.wasmInstance) {
+            options?.onProgress?.("wasm_loading");
+            const url = options?.wasmUrl || "https://cdn.jsdelivr.net/npm/@keyframe/core/pkg/keyframe_engine_bg.wasm";
+            const loadPromise = (async () => {
+                let instance = null;
+                let exports = null;
+                if (typeof WebAssembly === "undefined" || typeof fetch === "undefined") {
+                    throw new Error("Environment does not support WebAssembly or fetch. Host environment must support WebAssembly and fetch API to load WASM engine module.");
+                }
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                    }
+                    if (WebAssembly.instantiateStreaming) {
+                        try {
+                            const res = await WebAssembly.instantiateStreaming(response.clone());
+                            instance = res.instance;
+                            exports = instance.exports;
+                        }
+                        catch (e) {
+                            const buffer = await response.arrayBuffer();
+                            const res = await WebAssembly.instantiate(buffer);
+                            instance = res.instance;
+                            exports = instance.exports;
+                        }
+                    }
+                    else {
+                        const buffer = await response.arrayBuffer();
+                        const res = await WebAssembly.instantiate(buffer);
+                        instance = res.instance;
+                        exports = instance.exports;
+                    }
+                    this.wasmInstance = exports || instance;
+                    if (exports && exports.memory) {
+                        this.bindWasmMemory(exports.memory);
+                    }
+                    else if (instance && instance.exports && instance.exports.memory) {
+                        this.bindWasmMemory(instance.exports.memory);
+                    }
+                }
+                catch (fetchErr) {
+                    throw new Error(`Failed to load WASM engine module from "${url}": ${fetchErr?.message || fetchErr}. ` +
+                        "Please check CSP configuration, network connectivity, and host application environment setup.");
+                }
+            })();
+            const timeoutMs = 30000;
+            let timer = null;
+            const timeoutPromise = new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error(`WASM loading timeout (${timeoutMs}ms) from "${url}". Check network or host environment.`));
+                }, timeoutMs);
+            });
+            try {
+                await Promise.race([loadPromise, timeoutPromise]);
+            }
+            finally {
+                if (timer)
+                    clearTimeout(timer);
+            }
         }
+        else {
+            this.autoBindWasmMemory();
+        }
+        // Stage 3: OPFS Auto-Mount (if enabled)
+        if (options?.storage?.enabled !== false) {
+            options?.onProgress?.("opfs_mount");
+            try {
+                const mounted = await this.opfsStorage.mount();
+                if (mounted) {
+                    await this.opfsStorage.buildFrameIndex();
+                }
+            }
+            catch (err) {
+                console.warn("OPFS auto-mount failed, falling back to memory mode:", err);
+            }
+        }
+        // Stage 4: WASM internal prepare()
+        options?.onProgress?.("compiling");
+        if (this.wasmInstance && typeof this.wasmInstance.prepare === "function") {
+            this.wasmInstance.prepare();
+        }
+        this.prepared = true;
+    }
+    evaluateWasmFrame(globalTime) {
+        const count = this.wasmInstance.evaluate_frame(globalTime);
+        this.autoBindWasmMemory();
+        const memory = this.wasmInstance.memory ?? globalThis.wasmMemory ?? this.wasmInstance.__wasm?.memory;
+        if (!memory || !memory.buffer) {
+            throw new ReferenceError("WASM memory not bound. Call Engine.bindWasmMemory(memory) first, " +
+                "or set globalThis.wasmMemory = wasmExports.memory after initSync().");
+        }
+        const ptr = this.wasmInstance.get_instance_buffer_ptr() ?? 0;
+        const len = this.wasmInstance.get_instance_buffer_byte_length() ?? (count * 80);
+        const floatsPerInst = 20;
+        const memoryBuffer = memory.buffer;
+        const floatView = new Float32Array(memoryBuffer, ptr, count * floatsPerInst);
+        const uintView = new Uint32Array(memoryBuffer, ptr, count * floatsPerInst);
+        return {
+            view: floatView,
+            uintView,
+            count,
+            ptr,
+            byteOffset: ptr,
+            byteLength: len,
+            floatsPerInstance: floatsPerInst,
+        };
+    }
+    evaluateJSFrame(globalTime) {
+        const count = this.instances.length;
+        const floatsPerInst = 20;
+        const totalFloats = count * floatsPerInst;
+        if (!this.jsEvaluatedBuffer || this.jsEvaluatedBuffer.length < totalFloats) {
+            this.jsEvaluatedBuffer = new Float32Array(totalFloats);
+        }
+        const floatView = this.jsEvaluatedBuffer.subarray(0, totalFloats);
+        const uintView = new Uint32Array(floatView.buffer, floatView.byteOffset, totalFloats);
+        const scheduledMap = this.rootTimeline ? flattenTimeline(this.rootTimeline) : new Map();
+        const clipMap = this.clips;
+        const clipIndexMap = new Map();
+        let clipIdxCounter = 0;
+        for (const [clipId] of clipMap) {
+            clipIndexMap.set(clipId, clipIdxCounter++);
+        }
+        for (let i = 0; i < this.instances.length; i++) {
+            const inst = this.instances[i];
+            const clip = clipMap.get(inst.clip_id);
+            const clipIdx = clipIndexMap.get(inst.clip_id) ?? i;
+            const offset = i * floatsPerInst;
+            const isVisible = inst.visible ?? true;
+            let delay = inst.delay ?? 0;
+            if (scheduledMap.has(inst.id)) {
+                delay += scheduledMap.get(inst.id);
+            }
+            if (!isVisible || globalTime < delay || !clip) {
+                floatView[offset + 0] = 1;
+                floatView[offset + 1] = 0;
+                floatView[offset + 2] = 0;
+                floatView[offset + 3] = 0;
+                floatView[offset + 4] = 0;
+                floatView[offset + 5] = 1;
+                floatView[offset + 6] = 0;
+                floatView[offset + 7] = 0;
+                floatView[offset + 8] = 0;
+                floatView[offset + 9] = 0;
+                floatView[offset + 10] = 1;
+                floatView[offset + 11] = 0;
+                floatView[offset + 12] = 0;
+                floatView[offset + 13] = 0;
+                floatView[offset + 14] = 0;
+                floatView[offset + 15] = 1;
+                floatView[offset + 16] = 0.0;
+                uintView[offset + 17] = 0;
+                uintView[offset + 18] = clipIdx;
+                floatView[offset + 19] = 0;
+                continue;
+            }
+            const timeRemappingSpeed = inst.time_remapping_speed ?? 1.0;
+            const durationScale = inst.duration_scale || 1.0;
+            const clipDuration = clip.duration || 0.001;
+            const elapsed = (globalTime - delay) * timeRemappingSpeed;
+            let localTime = 0;
+            if (elapsed < 0) {
+                localTime = (clipDuration + (elapsed % clipDuration)) / durationScale;
+            }
+            else {
+                localTime = elapsed / durationScale;
+            }
+            const { transform: clipTransform, opacity: clipOpacity } = evaluateClip(clip, localTime);
+            const initialMat = transformToMatrix(inst.initial_transform ?? getDefaultTransform());
+            const clipMat = transformToMatrix(clipTransform);
+            let finalMat;
+            const blendMode = inst.blend_mode ?? BlendMode.Override;
+            if (blendMode === BlendMode.Override) {
+                finalMat = multiplyMatrices(initialMat, clipMat);
+            }
+            else {
+                // Additive blend mode: initial_mat + (clip_mat - Mat4::IDENTITY)
+                finalMat = new Float32Array(16);
+                for (let k = 0; k < 16; k++) {
+                    const identityVal = k % 5 === 0 ? 1 : 0;
+                    finalMat[k] = initialMat[k] + (clipMat[k] - identityVal);
+                }
+            }
+            for (let k = 0; k < 16; k++) {
+                floatView[offset + k] = finalMat[k];
+            }
+            const instOpacity = inst.opacity ?? 1.0;
+            floatView[offset + 16] = instOpacity * clipOpacity;
+            uintView[offset + 17] = 1;
+            uintView[offset + 18] = clipIdx;
+            floatView[offset + 19] = 0;
+        }
+        return {
+            view: floatView,
+            uintView,
+            count,
+            ptr: 0,
+            byteOffset: floatView.byteOffset,
+            byteLength: floatView.byteLength,
+            floatsPerInstance: floatsPerInst,
+        };
+    }
+    /**
+     * Evaluates the engine animation state at `globalTime` (in milliseconds).
+     * Directly returns a zero-copy raw TypedArray view pointing to WASM memory buffer (or contiguous JS buffer),
+     * along with pointer/offset and instance count.
+     */
+    evaluateFrame(globalTime) {
+        if (!this.prepared) {
+            throw new Error("Engine not prepared");
+        }
+        let result;
+        if (this.wasmInstance) {
+            result = this.evaluateWasmFrame(globalTime);
+        }
+        else {
+            result = this.evaluateJSFrame(globalTime);
+        }
+        this.lastEvaluatedFrameResult = result;
         if (this.devToolsEnabled && !this.notifyingDevTools) {
             this.notifyingDevTools = true;
-            const evaluated = this.getEvaluatedInstances(globalTime, true);
+            const evaluated = this.getEvaluatedInstances(globalTime, true, result);
             this.notifyDevTools(globalTime, evaluated);
             this.notifyingDevTools = false;
         }
         return result;
     }
-    getEvaluatedInstances(globalTime, skipEvaluate = false) {
-        const evalResult = skipEvaluate ? { count: this.instances.length } : this.evaluateFrame(globalTime);
-        const result = [];
-        if (this.wasmInstance &&
-            evalResult.ptr &&
-            evalResult.len > 0 &&
-            (this.wasmInstance.memory || globalThis.wasmMemory)) {
-            const memoryBuffer = (this.wasmInstance.memory || globalThis.wasmMemory).buffer;
-            const count = evalResult.count;
-            const floatsPerInst = 20;
-            const floatView = new Float32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
-            const uintView = new Uint32Array(memoryBuffer, evalResult.ptr, count * floatsPerInst);
-            for (let i = 0; i < count; i++) {
-                const offset = i * floatsPerInst;
-                const transformMatrix = floatView.slice(offset, offset + 16);
-                const opacity = floatView[offset + 16];
-                const visible = uintView[offset + 17] === 1;
-                const clipIndex = uintView[offset + 18];
-                const instData = this.instances[i];
-                result.push({
-                    id: instData?.id,
-                    clipId: instData?.clip_id,
-                    transformMatrix,
-                    opacity,
-                    visible,
-                    clipIndex,
-                });
+    /**
+     * Evaluates and returns the array of `EvaluatedInstance` objects at `globalTime` (in milliseconds).
+     *
+     * Each `EvaluatedInstance` includes `transformMatrix` (a zero-copy subarray view over the evaluation buffer),
+     * `opacity`, `visible`, and instance/clip identifiers.
+     * @param globalTime The global time in milliseconds.
+     * @param skipEvaluate If `true`, re-evaluation of the WASM frame is skipped.
+     * @param evalResultParam Optional pre-computed evaluation frame result.
+     */
+    getEvaluatedInstances(globalTime, skipEvaluate = false, evalResultParam) {
+        if (!this.prepared && !skipEvaluate) {
+            throw new Error("Engine not prepared");
+        }
+        // Cache-first lookup: if OPFS frame index contains cached bake for globalTime, return cached evaluated instances
+        if (this.opfsStorage.isMounted()) {
+            const cached = this.opfsStorage.getFrameFromIndex(globalTime);
+            if (cached && Array.isArray(cached)) {
+                return cached;
             }
         }
-        else {
-            for (let i = 0; i < this.instances.length; i++) {
-                const inst = this.instances[i];
-                const identityMatrix = new Float32Array([
-                    1, 0, 0, 0,
-                    0, 1, 0, 0,
-                    0, 0, 1, 0,
-                    0, 0, 0, 1
-                ]);
-                result.push({
-                    id: inst.id,
-                    clipId: inst.clip_id,
-                    transformMatrix: identityMatrix,
-                    opacity: inst.opacity ?? 1.0,
-                    visible: inst.visible ?? true,
-                    clipIndex: i,
-                });
+        let evalResult = evalResultParam;
+        if (!evalResult) {
+            if (skipEvaluate) {
+                if (this.lastEvaluatedFrameResult) {
+                    evalResult = this.lastEvaluatedFrameResult;
+                }
+                else if (this.wasmInstance && this.prepared) {
+                    evalResult = this.evaluateWasmFrame(globalTime);
+                }
+                else {
+                    evalResult = this.evaluateJSFrame(globalTime);
+                }
             }
+            else {
+                evalResult = this.evaluateFrame(globalTime);
+            }
+        }
+        const result = [];
+        const count = evalResult.count;
+        const floatView = evalResult.view;
+        const uintView = evalResult.uintView;
+        const floatsPerInst = evalResult.floatsPerInstance || 20;
+        for (let i = 0; i < count; i++) {
+            const offset = i * floatsPerInst;
+            // ZERO-COPY: Use subarray instead of slice to avoid creating extra Float32Array copies
+            const transformMatrix = floatView.subarray(offset, offset + 16);
+            const opacity = floatView[offset + 16];
+            const visible = uintView ? uintView[offset + 17] === 1 : floatView[offset + 17] === 1;
+            const clipIndex = uintView ? uintView[offset + 18] : floatView[offset + 18];
+            const instData = this.instances[i];
+            result.push({
+                id: instData?.id,
+                clipId: instData?.clip_id,
+                transformMatrix,
+                opacity,
+                visible,
+                clipIndex,
+            });
         }
         return result;
     }

@@ -25,6 +25,14 @@ export class Keyframe {
         }
         return this;
     }
+    springConfig(config) {
+        this.data.springConfig = config;
+        return this;
+    }
+    interpolateConfig(config) {
+        this.data.interpolateConfig = config;
+        return this;
+    }
     build() {
         return { ...this.data };
     }

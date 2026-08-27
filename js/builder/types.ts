@@ -100,6 +100,16 @@ export interface CompositionConfig {
   durationInFrames: number;
 }
 
+export interface EvaluatedFrameResult {
+  view: Float32Array;
+  uintView?: Uint32Array;
+  count: number;
+  ptr: number;
+  byteOffset: number;
+  byteLength: number;
+  floatsPerInstance: number;
+}
+
 export interface EvaluatedInstance {
   id?: string;
   clipId?: string;
