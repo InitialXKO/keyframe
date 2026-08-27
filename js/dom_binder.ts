@@ -43,6 +43,13 @@ export class DOMAdapter {
         matrixData = elem.__transformMatrix;
       }
 
+      const isVisible = evaluated && evaluated[i] ? (evaluated[i].visible ?? true) : (elem.__visible ?? true);
+      const rawOpacity = evaluated && evaluated[i] ? (evaluated[i].opacity ?? 1.0) : (elem.__opacity ?? 1.0);
+
+      // Keep element in compositing layer without trigger reflow: opacity minimum 0.001 when hidden
+      const effectiveOpacity = !isVisible ? 0.001 : Math.max(0.001, rawOpacity);
+      const pointerEvents = !isVisible ? "none" : "";
+
       if (matrixData && matrixData.length >= 16) {
         const m = matrixData;
         const matrix3dStr = `matrix3d(${m[0]}, ${m[1]}, ${m[2]}, ${m[3]}, ${m[4]}, ${m[5]}, ${m[6]}, ${m[7]}, ${m[8]}, ${m[9]}, ${m[10]}, ${m[11]}, ${m[12]}, ${m[13]}, ${m[14]}, ${m[15]})`;
@@ -50,8 +57,11 @@ export class DOMAdapter {
 
         if (elem.style) {
           elem.style.transform = fullTransform;
+          elem.style.opacity = effectiveOpacity.toString();
+          elem.style.pointerEvents = pointerEvents;
         } else if (typeof elem.setAttribute === "function") {
-          elem.setAttribute("style", `transform: ${fullTransform}`);
+          const styleStr = `transform: ${fullTransform}; opacity: ${effectiveOpacity};${pointerEvents ? ` pointer-events: ${pointerEvents};` : ""}`;
+          elem.setAttribute("style", styleStr);
         }
       }
     }

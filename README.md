@@ -195,13 +195,19 @@ webgpuAdapter.writeToBuffer(device, gpuBuffer, byteOffset, byteSize);
 
 ### 4. DOM & CSS 适配器 (`@keyframe/dom`)
 
+`@keyframe/dom` 在批量绑定 DOM 变换时，会自动提取实例中的 `transformMatrix`、`opacity` 与 `visible` 状态。
+为了避免每帧触发浏览器回流 (Reflow) 及合成层销毁卡顿，`DOMAdapter` 采用 GPU 友好策略：
+- ** display 切换**: 永远保持 DOM `display` 不变，避免重拍与回流。
+- **不可见状态 (`visible: false`)**: 使用 `opacity: 0.001` 代替完全隐藏 (`opacity: 0` / `display: none`) 以保住 GPU 合成层，并自动设置 `pointer-events: none` 禁用交互。
+- **透明度起步**: 透明度从 `0.001` 起步，所有变换与透明度计算均运行在 GPU 合成器 (Compositor) 层面。
+
 ```typescript
 import { domAdapter } from "@keyframe/dom";
 
 const elements = Array.from(document.querySelectorAll(".anim-node"));
 
-// 批量格式化并更新 CSS matrix3d
-domAdapter.batchApply(elements, currentTimeMs);
+// 批量格式化并更新 CSS matrix3d、opacity 与 pointer-events
+domAdapter.batchApply(elements, currentTimeMs, { engine });
 ```
 
 ---
