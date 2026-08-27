@@ -415,3 +415,53 @@ test("Engine zero-copy ABI: JS fallback mode packs instances in contiguous buffe
   assert.equal(instances[0].transformMatrix.byteOffset, evalFrame.view.byteOffset);
   assert.equal(instances[1].transformMatrix.byteOffset, evalFrame.view.byteOffset + 20 * 4);
 });
+
+test("bakeChunk binary format, Engine.decodeBakedChunk and StorageAdapter loadBakeData(key, { decode: true })", async () => {
+  const engine = new Engine();
+  const clip = new Clip("c1")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(10).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(110).build()));
+
+  const inst1 = new Instance("c1", "inst1");
+  engine.addClip(clip);
+  engine.addInstances([inst1]);
+  engine.prepared = true;
+
+  // Bake frames from 0ms to 1000ms at 10 fps (101ms intervals / ~11 frames)
+  const bakedBytes = engine.bakeChunk(0, 1000, 10);
+  assert.ok(bakedBytes instanceof Uint8Array);
+  assert.ok(bakedBytes.byteLength > 0);
+  assert.equal(bakedBytes.byteLength % 80, 0);
+
+  // Test static method Engine.decodeBakedChunk
+  const decoded = Engine.decodeBakedChunk(bakedBytes);
+  assert.ok(Array.isArray(decoded));
+  assert.equal(decoded.length, Math.floor(bakedBytes.byteLength / 80));
+
+  // Verify first decoded instance fields (visible, clipIndex, opacity, matrix)
+  assert.equal(decoded[0].visible, true);
+  assert.equal(decoded[0].opacity, 1.0);
+  assert.equal(decoded[0].clipIndex, 0);
+  assert.equal(decoded[0].transformMatrix[12], 10); // translateX = 10 at t=0
+
+  // Test StorageAdapter.loadBakeData with decode options
+  const storage = new StorageAdapter();
+  await storage.saveBakeData("test_bake.bin", bakedBytes);
+
+  // 1. Raw bytes mode (default / decode: false)
+  const rawData = await storage.loadBakeData("test_bake.bin");
+  assert.deepEqual(rawData, bakedBytes);
+
+  // 2. Decoded mode with boolean flag `true`
+  const decodedInstancesBool = await storage.loadBakeData("test_bake.bin", true);
+  assert.equal(decodedInstancesBool.length, decoded.length);
+  assert.equal(decodedInstancesBool[0].visible, true);
+  assert.equal(decodedInstancesBool[0].transformMatrix[12], 10);
+
+  // 3. Decoded mode with options object `{ decode: true }`
+  const decodedInstancesObj = await storage.loadBakeData("test_bake.bin", { decode: true });
+  assert.equal(decodedInstancesObj.length, decoded.length);
+  assert.equal(decodedInstancesObj[0].visible, true);
+  assert.equal(decodedInstancesObj[0].transformMatrix[12], 10);
+});

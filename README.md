@@ -67,8 +67,8 @@ Rust 侧数据结构采用 C ABI 与 16 字节对齐：
 pub struct GpuInstanceData {
     pub transform_matrix: [f32; 16], // 64 bytes (4x4 matrix)
     pub opacity: f32,                // 4 bytes
-    pub blend_mode: u32,             // 4 bytes
-    pub instance_id: u32,            // 4 bytes
+    pub visible: u32,                // 4 bytes (1 for true, 0 for false)
+    pub clip_index: u32,             // 4 bytes
     pub _padding: u32,               // 4 bytes padding
 }
 ```

@@ -758,20 +758,96 @@ export class Engine {
     }
   }
 
+  /**
+   * Bakes animation frames across the specified time range (`startMs` to `endMs`) at the given `fps`.
+   * Returns a contiguous `Uint8Array` binary chunk where each instance frame is packed as an 80-byte structure.
+   *
+   * Binary layout per 80-byte instance (matching `#[repr(C, align(16))] GpuInstanceData`):
+   * - 0..64 bytes (16 x Float32): 4x4 column-major transform matrix (`transform_matrix`)
+   * - 64..68 bytes (1 x Float32): opacity (`opacity`)
+   * - 68..72 bytes (1 x Uint32): visibility flag (`visible`, 1 for visible / true, 0 for hidden / false)
+   * - 72..76 bytes (1 x Uint32): clip index (`clip_index`)
+   * - 76..80 bytes (4 bytes): 16-byte alignment padding (`_padding`)
+   *
+   * To reverse-decode raw baked bytes back into structured `EvaluatedInstance[]`, use `Engine.decodeBakedChunk(data)`.
+   */
   public bakeChunk(startMs: number, endMs: number, fps = 30): Uint8Array {
     if (this.wasmInstance && this.wasmInstance.bake_chunk) {
       return this.wasmInstance.bake_chunk(startMs, endMs, fps);
     } else if (this.wasmInstance && this.wasmInstance.bake_range) {
       return this.wasmInstance.bake_range(startMs, endMs, fps);
     }
-    const duration = Math.max(0, endMs - startMs);
-    const numFrames = Math.max(1, Math.floor((duration / 1000) * fps));
-    const instCount = this.instances.length || 1;
-    return new Uint8Array(numFrames * instCount * 80);
+    const frameDuration = 1000 / Math.max(1, fps);
+    const chunks: Uint8Array[] = [];
+    let currentTime = startMs;
+    while (currentTime <= endMs) {
+      const res = this.evaluateJSFrame(currentTime);
+      const frameBytes = new Uint8Array(res.view.buffer, res.view.byteOffset, res.byteLength);
+      chunks.push(new Uint8Array(frameBytes));
+      currentTime += frameDuration;
+    }
+    const totalLength = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result;
   }
 
+  /**
+   * Alias for `bakeChunk(startMs, endMs, fps)`.
+   */
   public bakeRange(startMs: number, endMs: number, fps = 30): Uint8Array {
     return this.bakeChunk(startMs, endMs, fps);
+  }
+
+  /**
+   * Decodes raw binary chunk bytes produced by `bakeChunk` or loaded from storage back into an array of `EvaluatedInstance` objects.
+   *
+   * Parses 80-byte `GpuInstanceData` blocks:
+   * - `transformMatrix`: 4x4 Float32Array (16 floats)
+   * - `opacity`: Float32 at byte offset 64
+   * - `visible`: Boolean flag derived from Uint32 at byte offset 68 (`=== 1`)
+   * - `clipIndex`: Uint32 at byte offset 72
+   *
+   * @param data The binary Uint8Array containing packed GpuInstanceData blocks.
+   * @returns Array of decoded `EvaluatedInstance` items.
+   */
+  public static decodeBakedChunk(data: Uint8Array): EvaluatedInstance[] {
+    const bytesPerInstance = 80;
+    const count = Math.floor(data.byteLength / bytesPerInstance);
+    const result: EvaluatedInstance[] = [];
+
+    let buffer = data.buffer;
+    let byteOffset = data.byteOffset;
+    if (byteOffset % 4 !== 0) {
+      const copy = new Uint8Array(data.byteLength);
+      copy.set(data);
+      buffer = copy.buffer;
+      byteOffset = copy.byteOffset;
+    }
+
+    for (let i = 0; i < count; i++) {
+      const offset = byteOffset + i * bytesPerInstance;
+      const floatView = new Float32Array(buffer, offset, 20);
+      const uintView = new Uint32Array(buffer, offset, 20);
+
+      const transformMatrix = floatView.subarray(0, 16);
+      const opacity = floatView[16];
+      const visible = uintView[17] === 1;
+      const clipIndex = uintView[18];
+
+      result.push({
+        transformMatrix,
+        opacity,
+        visible,
+        clipIndex,
+      });
+    }
+
+    return result;
   }
 
   public exportIR(): EngineIR {
