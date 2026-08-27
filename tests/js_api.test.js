@@ -6,6 +6,25 @@ import { spring, interpolate, interpolateColors, Sequence, Series, createRemotio
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
+test("Easing.CubicBezier defaults to standard EaseInOut curve (0.42, 0, 0.58, 1) when cubic_params is omitted", async () => {
+  const engine = new Engine();
+  const clip = new Clip("bezier_default")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).easing(Easing.CubicBezier).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+  engine.addClip(clip);
+  engine.addInstances([new Instance("bezier_default", "i1")]);
+  engine.prepared = true;
+
+  // At t=500ms, linear would be 50. EaseInOut (0.42, 0, 0.58, 1) evaluated at t=0.5 yields 0.5 (translateX = 50).
+  // At t=250ms (linear = 25), EaseInOut produces ~14.65, distinct from linear.
+  const evalMid = engine.getEvaluatedInstances(250, true)[0];
+  const tx = evalMid.transformMatrix[12];
+  assert.notEqual(tx, 25);
+  assert.ok(tx > 10 && tx < 20);
+});
+
 test("JS Evaluator: Evaluates clip keyframes accurately without WASM instance (Issue #2 reproduction)", async () => {
   const engine = new Engine(); // No wasmInstance
   const clip = new Clip("test")
@@ -53,6 +72,23 @@ test("JS Evaluator: Supports Additive BlendMode, delay, time remapping, and init
   const evalActive = engine.getEvaluatedInstances(400, true)[0];
   assert.equal(evalActive.visible, true);
   assert.equal(evalActive.transformMatrix[12], 90);
+});
+
+test("TransformBuilder rotateX, rotateY, rotateZ, and rotateEuler helper methods", () => {
+  const tbX = new TransformBuilder().rotateX(90).build();
+  assert.ok(Math.abs(tbX.rotation_quat[0] - Math.sin(Math.PI / 4)) < 1e-5);
+  assert.ok(Math.abs(tbX.rotation_quat[3] - Math.cos(Math.PI / 4)) < 1e-5);
+
+  const tbY = new TransformBuilder().rotateY(180).build();
+  assert.ok(Math.abs(tbY.rotation_quat[1] - 1.0) < 1e-5);
+  assert.ok(Math.abs(tbY.rotation_quat[3] - 0.0) < 1e-5);
+
+  const tbZ = new TransformBuilder().rotateZ(360).build();
+  assert.ok(Math.abs(tbZ.rotation_quat[2] - 0.0) < 1e-5);
+  assert.ok(Math.abs(tbZ.rotation_quat[3] - (-1.0)) < 1e-5 || Math.abs(tbZ.rotation_quat[3] - 1.0) < 1e-5);
+
+  const tbEuler = new TransformBuilder().rotateEuler(0, 90, 0).build();
+  assert.ok(Math.abs(tbEuler.rotation_quat[1] - Math.sin(Math.PI / 4)) < 1e-5);
 });
 
 test("Builder API constructs valid Clip and Instance IR with Additive BlendMode & Time Remapping", () => {
@@ -103,6 +139,21 @@ test("Remotion spring, interpolate & interpolateColors math", () => {
 
   const colorHex = interpolateColors(50, [0, 100], ["#ff0000", "#00ff00"]);
   assert.ok(colorHex.includes("rgba(128, 128, 0"));
+
+  // WASM Acceleration test for interpolate with extrapolation options
+  const mockWasm = {
+    interpolate_extrapolate(v, input, output, left, right) {
+      assert.equal(v, 150);
+      assert.equal(left, "clamp");
+      assert.equal(right, "clamp");
+      return 100;
+    }
+  };
+
+  globalThis.wasmInstance = mockWasm;
+  const wasmRes = interpolate(150, [0, 100], [0, 100], { extrapolateRight: "clamp", extrapolateLeft: "clamp" });
+  assert.equal(wasmRes, 100);
+  delete globalThis.wasmInstance;
 });
 
 test("Remotion Sequence & Series context propagation & createRemotionAdapter", () => {
@@ -414,4 +465,54 @@ test("Engine zero-copy ABI: JS fallback mode packs instances in contiguous buffe
   assert.equal(instances[1].transformMatrix.buffer, evalFrame.view.buffer);
   assert.equal(instances[0].transformMatrix.byteOffset, evalFrame.view.byteOffset);
   assert.equal(instances[1].transformMatrix.byteOffset, evalFrame.view.byteOffset + 20 * 4);
+});
+
+test("bakeChunk binary format, Engine.decodeBakedChunk and StorageAdapter loadBakeData(key, { decode: true })", async () => {
+  const engine = new Engine();
+  const clip = new Clip("c1")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(10).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(110).build()));
+
+  const inst1 = new Instance("c1", "inst1");
+  engine.addClip(clip);
+  engine.addInstances([inst1]);
+  engine.prepared = true;
+
+  // Bake frames from 0ms to 1000ms at 10 fps (101ms intervals / ~11 frames)
+  const bakedBytes = engine.bakeChunk(0, 1000, 10);
+  assert.ok(bakedBytes instanceof Uint8Array);
+  assert.ok(bakedBytes.byteLength > 0);
+  assert.equal(bakedBytes.byteLength % 80, 0);
+
+  // Test static method Engine.decodeBakedChunk
+  const decoded = Engine.decodeBakedChunk(bakedBytes);
+  assert.ok(Array.isArray(decoded));
+  assert.equal(decoded.length, Math.floor(bakedBytes.byteLength / 80));
+
+  // Verify first decoded instance fields (visible, clipIndex, opacity, matrix)
+  assert.equal(decoded[0].visible, true);
+  assert.equal(decoded[0].opacity, 1.0);
+  assert.equal(decoded[0].clipIndex, 0);
+  assert.equal(decoded[0].transformMatrix[12], 10); // translateX = 10 at t=0
+
+  // Test StorageAdapter.loadBakeData with decode options
+  const storage = new StorageAdapter();
+  await storage.saveBakeData("test_bake.bin", bakedBytes);
+
+  // 1. Raw bytes mode (default / decode: false)
+  const rawData = await storage.loadBakeData("test_bake.bin");
+  assert.deepEqual(rawData, bakedBytes);
+
+  // 2. Decoded mode with boolean flag `true`
+  const decodedInstancesBool = await storage.loadBakeData("test_bake.bin", true);
+  assert.equal(decodedInstancesBool.length, decoded.length);
+  assert.equal(decodedInstancesBool[0].visible, true);
+  assert.equal(decodedInstancesBool[0].transformMatrix[12], 10);
+
+  // 3. Decoded mode with options object `{ decode: true }`
+  const decodedInstancesObj = await storage.loadBakeData("test_bake.bin", { decode: true });
+  assert.equal(decodedInstancesObj.length, decoded.length);
+  assert.equal(decodedInstancesObj[0].visible, true);
+  assert.equal(decodedInstancesObj[0].transformMatrix[12], 10);
 });

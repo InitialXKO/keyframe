@@ -314,11 +314,49 @@ test("DOMAdapter: batchApply with engine option triggers single getEvaluatedInst
     }
   };
 
-  const elem = { style: { transform: "" } };
+  const elem = { style: { transform: "", opacity: "", pointerEvents: "" } };
   domAdapter.batchApply([elem], 500, { engine: mockEngine });
 
   assert.equal(getEvaluatedInstancesCallCount, 1, "getEvaluatedInstances should be called exactly once");
   assert.ok(elem.style.transform.includes("50, 60, 0, 1)"));
+});
+
+test("DOMAdapter: batchApply opacity clamping, visibility toggling (0.001 layer preservation), and pointer-events", () => {
+  const mockEngine = {
+    getEvaluatedInstances(t) {
+      if (t === 0) {
+        return [
+          {
+            transformMatrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+            opacity: 0,
+            visible: false
+          }
+        ];
+      } else {
+        return [
+          {
+            transformMatrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+            opacity: 0.5,
+            visible: true
+          }
+        ];
+      }
+    }
+  };
+
+  const elem = { style: { transform: "", opacity: "", pointerEvents: "" } };
+
+  // 1. Hidden state: visible = false -> opacity set to 0.001 (preserves GPU layer, no display toggle, pointerEvents = "none")
+  domAdapter.batchApply([elem], 0, { engine: mockEngine });
+  assert.equal(elem.style.opacity, "0.001");
+  assert.equal(elem.style.pointerEvents, "none");
+  assert.equal(elem.style.display, undefined);
+
+  // 2. Visible state: visible = true, opacity = 0.5 -> opacity set to 0.5, pointerEvents = ""
+  domAdapter.batchApply([elem], 500, { engine: mockEngine });
+  assert.equal(elem.style.opacity, "0.5");
+  assert.equal(elem.style.pointerEvents, "");
+  assert.equal(elem.style.display, undefined);
 });
 
 test("Controller: Playback state management & frame events", () => {

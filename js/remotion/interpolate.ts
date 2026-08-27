@@ -17,6 +17,28 @@ export function interpolate(
     throw new Error("inputRange and outputRange must have the same length");
   }
 
+  const wasm = (globalThis as any).wasmInstance;
+  if (!options?.easing && wasm) {
+    if (typeof wasm.interpolate_extrapolate === "function") {
+      const left = options?.extrapolateLeft ?? "extend";
+      const right = options?.extrapolateRight ?? "extend";
+      return wasm.interpolate_extrapolate(
+        value,
+        new Float64Array(inputRange),
+        new Float64Array(outputRange),
+        left,
+        right
+      );
+    } else if (typeof wasm.interpolate_opts === "function") {
+      return wasm.interpolate_opts(
+        value,
+        new Float64Array(inputRange),
+        new Float64Array(outputRange),
+        JSON.stringify(options || {})
+      );
+    }
+  }
+
   const extrapolateLeft = options?.extrapolateLeft ?? "extend";
   const extrapolateRight = options?.extrapolateRight ?? "extend";
   const easing = options?.easing ?? ((t: number) => t);

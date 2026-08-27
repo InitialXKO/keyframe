@@ -1,4 +1,6 @@
 import { OPFSStorage } from "./opfs_storage.js";
+import { Engine } from "./builder/engine.js";
+import { EvaluatedInstance } from "./builder/types.js";
 
 export interface StreamBakeOptions {
   startMs: number;
@@ -6,6 +8,10 @@ export interface StreamBakeOptions {
   fps?: number;
   chunkSizeMs?: number;
   onProgress?: (progressPercent: number) => void;
+}
+
+export interface LoadBakeDataOptions {
+  decode?: boolean;
 }
 
 export class StorageAdapter {
@@ -33,8 +39,24 @@ export class StorageAdapter {
     await this.opfs.write(key, bakeBytes);
   }
 
-  public async loadBakeData(key: string): Promise<Uint8Array> {
-    return await this.opfs.read(key);
+  public async loadBakeData(key: string, decode?: false): Promise<Uint8Array>;
+  public async loadBakeData(key: string, decode: true): Promise<EvaluatedInstance[]>;
+  public async loadBakeData(key: string, options: { decode: true }): Promise<EvaluatedInstance[]>;
+  public async loadBakeData(key: string, options?: LoadBakeDataOptions): Promise<Uint8Array | EvaluatedInstance[]>;
+  public async loadBakeData(
+    key: string,
+    optionsOrDecode?: boolean | LoadBakeDataOptions
+  ): Promise<Uint8Array | EvaluatedInstance[]> {
+    const bytes = await this.opfs.read(key);
+    const shouldDecode =
+      typeof optionsOrDecode === "boolean"
+        ? optionsOrDecode
+        : optionsOrDecode?.decode === true;
+
+    if (shouldDecode) {
+      return Engine.decodeBakedChunk(bytes);
+    }
+    return bytes;
   }
 
   public async bakeStreamToOPFS(

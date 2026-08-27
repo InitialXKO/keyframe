@@ -35,6 +35,17 @@ impl KeyframeEngine {
     }
 
     pub fn interpolate(&self, value: f64, input_range: &[f64], output_range: &[f64]) -> f64 {
+        self.interpolate_extrapolate(value, input_range, output_range, "extend", "extend")
+    }
+
+    pub fn interpolate_extrapolate(
+        &self,
+        value: f64,
+        input_range: &[f64],
+        output_range: &[f64],
+        extrapolate_left: &str,
+        extrapolate_right: &str,
+    ) -> f64 {
         if input_range.is_empty() || output_range.is_empty() {
             return value;
         }
@@ -43,11 +54,22 @@ impl KeyframeEngine {
         }
 
         if value <= input_range[0] {
-            return output_range[0];
+            if extrapolate_left == "clamp" {
+                return output_range[0];
+            }
+            if extrapolate_left == "identity" {
+                return value;
+            }
         }
+
         let last_idx = input_range.len() - 1;
         if value >= input_range[last_idx] {
-            return output_range[last_idx];
+            if extrapolate_right == "clamp" {
+                return output_range[last_idx];
+            }
+            if extrapolate_right == "identity" {
+                return value;
+            }
         }
 
         for i in 0..last_idx {
@@ -61,7 +83,49 @@ impl KeyframeEngine {
             }
         }
 
-        output_range[last_idx]
+        if value < input_range[0] {
+            let in_len = input_range[1] - input_range[0];
+            if in_len.abs() < 1e-7 {
+                return output_range[0];
+            }
+            let linear_t = (value - input_range[0]) / in_len;
+            output_range[0] + linear_t * (output_range[1] - output_range[0])
+        } else {
+            let in_len = input_range[last_idx] - input_range[last_idx - 1];
+            if in_len.abs() < 1e-7 {
+                return output_range[last_idx];
+            }
+            let linear_t = (value - input_range[last_idx - 1]) / in_len;
+            output_range[last_idx - 1] + linear_t * (output_range[last_idx] - output_range[last_idx - 1])
+        }
+    }
+
+    pub fn interpolate_opts(
+        &self,
+        value: f64,
+        input_range: &[f64],
+        output_range: &[f64],
+        opts_json: &str,
+    ) -> f64 {
+        #[derive(serde::Deserialize)]
+        #[allow(non_snake_case)]
+        struct InterpolateOptionsJson {
+            #[serde(default)]
+            extrapolateLeft: Option<String>,
+            #[serde(default)]
+            extrapolateRight: Option<String>,
+        }
+
+        let (left, right) = if let Ok(opts) = serde_json::from_str::<InterpolateOptionsJson>(opts_json) {
+            (
+                opts.extrapolateLeft.unwrap_or_else(|| "extend".to_string()),
+                opts.extrapolateRight.unwrap_or_else(|| "extend".to_string()),
+            )
+        } else {
+            ("extend".to_string(), "extend".to_string())
+        };
+
+        self.interpolate_extrapolate(value, input_range, output_range, &left, &right)
     }
 
     pub fn interpolate_path_3d(
