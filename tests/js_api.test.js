@@ -6,6 +6,25 @@ import { spring, interpolate, interpolateColors, Sequence, Series, createRemotio
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
+test("Easing.CubicBezier defaults to standard EaseInOut curve (0.42, 0, 0.58, 1) when cubic_params is omitted", async () => {
+  const engine = new Engine();
+  const clip = new Clip("bezier_default")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).easing(Easing.CubicBezier).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+  engine.addClip(clip);
+  engine.addInstances([new Instance("bezier_default", "i1")]);
+  engine.prepared = true;
+
+  // At t=500ms, linear would be 50. EaseInOut (0.42, 0, 0.58, 1) evaluated at t=0.5 yields 0.5 (translateX = 50).
+  // At t=250ms (linear = 25), EaseInOut produces ~14.65, distinct from linear.
+  const evalMid = engine.getEvaluatedInstances(250, true)[0];
+  const tx = evalMid.transformMatrix[12];
+  assert.notEqual(tx, 25);
+  assert.ok(tx > 10 && tx < 20);
+});
+
 test("JS Evaluator: Evaluates clip keyframes accurately without WASM instance (Issue #2 reproduction)", async () => {
   const engine = new Engine(); // No wasmInstance
   const clip = new Clip("test")

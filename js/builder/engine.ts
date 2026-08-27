@@ -41,7 +41,8 @@ function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefin
       if (cubicParams) {
         return solveCubicBezier(cubicParams.p1x, cubicParams.p1y, cubicParams.p2x, cubicParams.p2y, clampedT);
       }
-      return clampedT;
+      // Fallback to standard EaseInOut curve (0.42, 0.0, 0.58, 1.0) when cubic_params is omitted
+      return solveCubicBezier(0.42, 0.0, 0.58, 1.0, clampedT);
     case Easing.Step:
       return clampedT >= 1.0 ? 1.0 : 0.0;
     default:

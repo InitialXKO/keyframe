@@ -45,7 +45,8 @@ pub fn evaluate_easing(easing: EasingType, cubic_params: Option<&CubicBezierPara
             if let Some(params) = cubic_params {
                 solve_cubic_bezier(params.p1x, params.p1y, params.p2x, params.p2y, clamped_t)
             } else {
-                clamped_t
+                // Fallback to standard EaseInOut curve (0.42, 0.0, 0.58, 1.0) when cubic_params is omitted
+                solve_cubic_bezier(0.42, 0.0, 0.58, 1.0, clamped_t)
             }
         }
         EasingType::Step => {
