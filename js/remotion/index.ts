@@ -9,7 +9,7 @@ export function createRemotionAdapter(engineInstance: any) {
   return {
     evaluateFrame: (frame: number, fps = 30) => {
       const timeMs = (frame / fps) * 1000;
-      return engineInstance.evaluateFrame(timeMs);
+      return engineInstance.getEvaluatedInstances ? engineInstance.getEvaluatedInstances(timeMs) : engineInstance.evaluateFrame(timeMs);
     },
     compileToIR: () => {
       return engineInstance.exportIR();

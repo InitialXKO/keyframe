@@ -258,15 +258,10 @@ test("DOMAdapter: batchApply matrix3d formatting & performance guardrail warning
   assert.ok(elements[0].style.transform.includes("10, 20, 0, 1)"));
 });
 
-test("DOMAdapter: batchApply with engine option triggers single getEvaluatedInstances call without duplicate evaluateFrame", () => {
-  let evaluateFrameCallCount = 0;
+test("DOMAdapter: batchApply with engine option triggers single getEvaluatedInstances call", () => {
   let getEvaluatedInstancesCallCount = 0;
 
   const mockEngine = {
-    evaluateFrame(t) {
-      evaluateFrameCallCount++;
-      return { count: 1, ptr: 0, len: 80 };
-    },
     getEvaluatedInstances(t) {
       getEvaluatedInstancesCallCount++;
       return [
@@ -289,7 +284,6 @@ test("DOMAdapter: batchApply with engine option triggers single getEvaluatedInst
   domAdapter.batchApply([elem], 500, { engine: mockEngine });
 
   assert.equal(getEvaluatedInstancesCallCount, 1, "getEvaluatedInstances should be called exactly once");
-  assert.equal(evaluateFrameCallCount, 0, "evaluateFrame should not be called when getEvaluatedInstances is present");
   assert.ok(elem.style.transform.includes("50, 60, 0, 1)"));
 });
 

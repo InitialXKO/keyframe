@@ -397,13 +397,9 @@ export class Engine {
   }
 
   /**
-   * Evaluates the engine animation state at `globalTime` (in milliseconds).
-   *
-   * Note: In WASM mode, this triggers WASM frame evaluation and returns low-level buffer metadata
-   * `{ count, ptr, len }`. If structured instance data with transform matrices is needed,
-   * call `getEvaluatedInstances(globalTime)` instead.
+   * Internal evaluation helper for WASM/JS frame evaluation state.
    */
-  public evaluateFrame(globalTime: number): any {
+  private evaluateFrame(globalTime: number): any {
     let result: any = { count: this.instances.length };
     if (this.wasmInstance) {
       const count = this.wasmInstance.evaluate_frame(globalTime);

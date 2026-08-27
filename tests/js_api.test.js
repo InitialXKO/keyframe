@@ -188,7 +188,7 @@ test("Engine DevTools messaging integration", () => {
   engine.enableDevTools();
   assert.equal(engine.isDevToolsEnabled(), true);
 
-  engine.evaluateFrame(250);
+  engine.getEvaluatedInstances(250);
   assert.ok(postedMessage !== null);
   assert.equal(postedMessage.source, "keyframe-engine-devtools");
   assert.equal(postedMessage.type, "FRAME_EVALUATED");
