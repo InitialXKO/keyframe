@@ -82,6 +82,13 @@ pub struct GpuInstanceData {
 2. **溢出检查**: 验证 `offset + size <= buffer.size` (抛出 `RangeError`)。
 3. **设备丢失感知**: 检测 `device.isLost` (抛出 `GPUDeviceLostError`)。
 
+### 3. Zero-Copy ABI 评估 API
+
+引擎提供两层零拷贝评估 API：
+
+1. **`engine.evaluateFrame(globalTime)`**: 极致性能模式，直接返回指向 WASM 内存 (或 JS 连续 Buffer) 的原始 `Float32Array` TypedArray 视图 (`view`) 以及内存指针 (`ptr`)、偏移量 (`byteOffset`)、字节长度 (`byteLength`) 与实例数量 (`count`)，无任何数据拷贝，极适合渲染管线批量处理。
+2. **`engine.getEvaluatedInstances(globalTime)`**: 便捷对象模式，内部底层采用 `floatView.subarray(offset, offset + 16)` 截取视图窗口而非 `.slice()` 拷贝数据，既保留易用的结构化对象 API，又彻底消除了逐帧逐实例小数组 GC 分配压力。
+
 ---
 
 ## 快速开始
@@ -141,7 +148,10 @@ engine.addInstances([instance]);
 // 零样板全异步加载初始化 (自动拉取/编译 WASM、绑定 memory、挂载 OPFS 缓存)
 await engine.prepare();
 
-// 评估全局毫秒时刻的动画帧并获取包含矩阵等完整数据的实例列表
+// 1. 极致性能 Zero-Copy 模式：直接获取指向 WASM 内存的 TypedArray 视图与偏移量/实例数
+const { view, ptr, byteOffset, byteLength, count } = engine.evaluateFrame(500);
+
+// 2. 便捷结构化模式：返回 EvaluatedInstance[]，内部 transformMatrix 为 subarray 零拷贝视图
 const evaluated = engine.getEvaluatedInstances(500);
 ```
 
