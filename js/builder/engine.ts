@@ -429,41 +429,46 @@ export class Engine {
         let instance: any = null;
         let exports: any = null;
 
-        if (typeof WebAssembly !== "undefined" && typeof fetch !== "undefined") {
-          try {
-            const response = await fetch(url);
-            if (!response.ok) {
-              throw new Error(`Failed to fetch WASM: ${response.statusText}`);
-            }
-            if (WebAssembly.instantiateStreaming) {
-              try {
-                const res = await WebAssembly.instantiateStreaming(response.clone());
-                instance = res.instance;
-                exports = instance.exports;
-              } catch (e) {
-                const buffer = await response.arrayBuffer();
-                const res = await WebAssembly.instantiate(buffer);
-                instance = res.instance;
-                exports = instance.exports;
-              }
-            } else {
+        if (typeof WebAssembly === "undefined" || typeof fetch === "undefined") {
+          throw new Error(
+            "Environment does not support WebAssembly or fetch. Host environment must support WebAssembly and fetch API to load WASM engine module."
+          );
+        }
+
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} ${response.statusText}`);
+          }
+          if (WebAssembly.instantiateStreaming) {
+            try {
+              const res = await WebAssembly.instantiateStreaming(response.clone());
+              instance = res.instance;
+              exports = instance.exports;
+            } catch (e) {
               const buffer = await response.arrayBuffer();
               const res = await WebAssembly.instantiate(buffer);
               instance = res.instance;
               exports = instance.exports;
             }
-
-            this.wasmInstance = exports || instance;
-            if (exports && exports.memory) {
-              this.bindWasmMemory(exports.memory);
-            } else if (instance && instance.exports && instance.exports.memory) {
-              this.bindWasmMemory(instance.exports.memory);
-            }
-          } catch (fetchErr: any) {
-            console.warn("WASM loading failed, operating in JS fallback mode:", fetchErr?.message || fetchErr);
+          } else {
+            const buffer = await response.arrayBuffer();
+            const res = await WebAssembly.instantiate(buffer);
+            instance = res.instance;
+            exports = instance.exports;
           }
-        } else {
-          console.warn("Environment does not support WebAssembly or fetch, operating in JS fallback mode");
+
+          this.wasmInstance = exports || instance;
+          if (exports && exports.memory) {
+            this.bindWasmMemory(exports.memory);
+          } else if (instance && instance.exports && instance.exports.memory) {
+            this.bindWasmMemory(instance.exports.memory);
+          }
+        } catch (fetchErr: any) {
+          throw new Error(
+            `Failed to load WASM engine module from "${url}": ${fetchErr?.message || fetchErr}. ` +
+            "Please check CSP configuration, network connectivity, and host application environment setup."
+          );
         }
       })();
 
@@ -471,7 +476,7 @@ export class Engine {
       let timer: any = null;
       const timeoutPromise = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          reject(new Error("WASM loading timeout"));
+          reject(new Error(`WASM loading timeout (${timeoutMs}ms) from "${url}". Check network or host environment.`));
         }, timeoutMs);
       });
 

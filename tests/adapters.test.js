@@ -69,14 +69,35 @@ function createMockThreeObject(initialPos = { x: 0, y: 0, z: 0 }) {
 }
 
 test("ThreeAdapter: Token-based dual scene parallel isolation", async () => {
-  const engineA = new Engine();
+  const memoryA = new WebAssembly.Memory({ initial: 1 });
+  const mockWasmA = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 1,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => 80,
+    prepare: () => {},
+    memory: memoryA,
+  };
+  const memoryB = new WebAssembly.Memory({ initial: 1 });
+  const mockWasmB = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 1,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => 80,
+    prepare: () => {},
+    memory: memoryB,
+  };
+
+  const engineA = new Engine(mockWasmA);
   const clipA = new Clip("cA").duration(1000).addKeyframe(
     new Keyframe(0).transform(new TransformBuilder().translateX(100).build())
   );
   engineA.addClip(clipA).addInstances([new Instance("cA", "instA")]);
   await engineA.prepare();
 
-  const engineB = new Engine();
+  const engineB = new Engine(mockWasmB);
   const clipB = new Clip("cB").duration(1000).addKeyframe(
     new Keyframe(0).transform(new TransformBuilder().translateX(500).build())
   );
@@ -152,7 +173,17 @@ test("ThreeAdapter: Lifecycle unregisterScene abandoned false vs true", () => {
 });
 
 test("ThreeAdapter: rasterized precision semantics (true vs false)", async () => {
-  const engine = new Engine();
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const mockWasm = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 1,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => 80,
+    prepare: () => {},
+    memory,
+  };
+  const engine = new Engine(mockWasm);
   const clip = new Clip("c1").duration(1000).addKeyframe(
     new Keyframe(0).transform(new TransformBuilder().translateX(200).build())
   );

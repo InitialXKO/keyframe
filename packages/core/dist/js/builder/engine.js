@@ -98,7 +98,6 @@ export class Engine {
             }
         }
         else {
-            // Fallback JS evaluation if WASM buffer is not accessible directly
             for (let i = 0; i < this.instances.length; i++) {
                 const inst = this.instances[i];
                 const identityMatrix = new Float32Array([
@@ -107,10 +106,6 @@ export class Engine {
                     0, 0, 1, 0,
                     0, 0, 0, 1
                 ]);
-                const elapsed = Math.max(0, globalTime - inst.delay);
-                const t = Math.min(1, elapsed / 2000);
-                identityMatrix[12] = (t - 0.5) * 200; // tx
-                identityMatrix[13] = Math.sin(t * Math.PI) * 100; // ty
                 result.push({
                     id: inst.id,
                     clipId: inst.clip_id,
