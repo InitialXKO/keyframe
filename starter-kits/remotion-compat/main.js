@@ -16,7 +16,7 @@ async function initRemotionExport() {
 
   engine.addClip(clip);
   engine.addInstances([new Instance('hero_banner', 'banner_1')]);
-  await engine.prepare({ wasmUrl: 'https://cdn.jsdelivr.net/npm/@keyframe/core/pkg/keyframe_engine_bg.wasm' });
+  await engine.prepare({ wasmUrl: '../../pkg/keyframe_engine_bg.wasm' });
 
   // Create AudioContext for Audio Clock Master Adaptive Convergence
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
