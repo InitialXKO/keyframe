@@ -23,12 +23,32 @@ export interface TransformData {
     scale: [number, number, number];
     origin: [number, number, number];
 }
+export interface PrepareOptions {
+    wasmUrl?: string;
+    storage?: {
+        enabled?: boolean;
+        preloadHeaders?: boolean;
+    };
+    onProgress?: (stage: string) => void;
+}
+export interface SpringConfig {
+    mass?: number;
+    damping?: number;
+    stiffness?: number;
+}
+export interface InterpolateConfig {
+    extrapolate?: string;
+    extrapolateLeft?: string;
+    extrapolateRight?: string;
+}
 export interface KeyframeData {
     time: number;
     transform: TransformData;
     opacity: number;
     easing: Easing;
     cubic_params?: CubicBezierParams;
+    springConfig?: SpringConfig;
+    interpolateConfig?: InterpolateConfig;
 }
 export interface AnimationClipData {
     id: string;
@@ -66,6 +86,15 @@ export interface CompositionConfig {
     height: number;
     fps: number;
     durationInFrames: number;
+}
+export interface EvaluatedFrameResult {
+    view: Float32Array;
+    uintView?: Uint32Array;
+    count: number;
+    ptr: number;
+    byteOffset: number;
+    byteLength: number;
+    floatsPerInstance: number;
 }
 export interface EvaluatedInstance {
     id?: string;

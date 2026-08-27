@@ -356,3 +356,62 @@ test("Engine.prepare() compatibility validation and unprepared guardrail", async
   assert.ok(stages.includes("validation"));
   assert.ok(stages.includes("wasm_loading"));
 });
+
+test("Engine zero-copy ABI: evaluateFrame() returns raw WASM memory view and getEvaluatedInstances() uses zero-copy subarray view", async () => {
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const mockWasm = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 2,
+    get_instance_buffer_ptr: () => 64,
+    get_instance_buffer_byte_length: () => 160,
+    prepare: () => {},
+    memory,
+  };
+
+  const engine = new Engine(mockWasm);
+  engine.addInstances([new Instance("c1", "inst1"), new Instance("c1", "inst2")]);
+  await engine.prepare();
+
+  // 1. Test evaluateFrame returns raw memory view without copying
+  const evalFrame = engine.evaluateFrame(500);
+  assert.equal(evalFrame.count, 2);
+  assert.equal(evalFrame.ptr, 64);
+  assert.equal(evalFrame.byteOffset, 64);
+  assert.equal(evalFrame.byteLength, 160);
+  assert.equal(evalFrame.floatsPerInstance, 20);
+  assert.equal(evalFrame.view.buffer, memory.buffer);
+  assert.equal(evalFrame.view.byteOffset, 64);
+  assert.equal(evalFrame.view.length, 40);
+
+  // 2. Test getEvaluatedInstances uses subarray view over memory buffer (zero copy)
+  const instances = engine.getEvaluatedInstances(500, true);
+  assert.equal(instances.length, 2);
+  assert.equal(instances[0].transformMatrix.buffer, memory.buffer);
+  assert.equal(instances[0].transformMatrix.byteOffset, 64);
+  assert.equal(instances[0].transformMatrix.length, 16);
+
+  assert.equal(instances[1].transformMatrix.buffer, memory.buffer);
+  assert.equal(instances[1].transformMatrix.byteOffset, 64 + 20 * 4);
+  assert.equal(instances[1].transformMatrix.length, 16);
+});
+
+test("Engine zero-copy ABI: JS fallback mode packs instances in contiguous buffer view", async () => {
+  const engine = new Engine();
+  const clip = new Clip("c1").duration(1000);
+  engine.addClip(clip);
+  engine.addInstances([new Instance("c1", "inst1"), new Instance("c1", "inst2")]);
+  engine.prepared = true;
+
+  const evalFrame = engine.evaluateFrame(100);
+  assert.equal(evalFrame.count, 2);
+  assert.equal(evalFrame.view.length, 40);
+
+  const instances = engine.getEvaluatedInstances(100, true);
+  assert.equal(instances.length, 2);
+  // Verify transformMatrix shares the exact same ArrayBuffer with evalFrame.view
+  assert.equal(instances[0].transformMatrix.buffer, evalFrame.view.buffer);
+  assert.equal(instances[1].transformMatrix.buffer, evalFrame.view.buffer);
+  assert.equal(instances[0].transformMatrix.byteOffset, evalFrame.view.byteOffset);
+  assert.equal(instances[1].transformMatrix.byteOffset, evalFrame.view.byteOffset + 20 * 4);
+});
