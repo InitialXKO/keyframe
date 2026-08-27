@@ -14,7 +14,10 @@ export class WebGPUAdapter {
         if (!device) {
             throw new GPUDeviceLostError("GPUDevice is null or undefined.");
         }
-        if (device.isLost === true || device.__isDeviceLost === true) {
+        if (device.isLost === true ||
+            device.lost === true ||
+            device.__isDeviceLost === true ||
+            (device.lost && typeof device.lost === "object" && device.lost.__isLost === true)) {
             throw new GPUDeviceLostError("GPUDevice is lost. Buffer write aborted.");
         }
         // Layer 1: Alignment Check
@@ -26,7 +29,18 @@ export class WebGPUAdapter {
         let rawData;
         let instanceCount = 0;
         if (engine) {
-            if (typeof engine.bakeChunk === "function") {
+            if (typeof engine.evaluateFrame === "function") {
+                const frameResult = engine.evaluateFrame(time);
+                if (frameResult && frameResult.view) {
+                    rawData = new Uint8Array(frameResult.view.buffer, frameResult.view.byteOffset, frameResult.byteLength || frameResult.view.byteLength);
+                    instanceCount = frameResult.count;
+                }
+                else {
+                    rawData = new Uint8Array(80);
+                    instanceCount = 1;
+                }
+            }
+            else if (typeof engine.bakeChunk === "function") {
                 rawData = engine.bakeChunk(time, time, 30);
             }
             else if (typeof engine.getEvaluatedInstances === "function") {

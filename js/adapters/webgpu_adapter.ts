@@ -49,7 +49,20 @@ export class WebGPUAdapter {
     let instanceCount = 0;
 
     if (engine) {
-      if (typeof engine.bakeChunk === "function") {
+      if (typeof engine.evaluateFrame === "function") {
+        const frameResult = engine.evaluateFrame(time);
+        if (frameResult && frameResult.view) {
+          rawData = new Uint8Array(
+            frameResult.view.buffer,
+            frameResult.view.byteOffset,
+            frameResult.byteLength || frameResult.view.byteLength
+          );
+          instanceCount = frameResult.count;
+        } else {
+          rawData = new Uint8Array(80);
+          instanceCount = 1;
+        }
+      } else if (typeof engine.bakeChunk === "function") {
         rawData = engine.bakeChunk(time, time, 30);
       } else if (typeof engine.getEvaluatedInstances === "function") {
         const evaluated = engine.getEvaluatedInstances(time);
