@@ -103,6 +103,21 @@ test("Remotion spring, interpolate & interpolateColors math", () => {
 
   const colorHex = interpolateColors(50, [0, 100], ["#ff0000", "#00ff00"]);
   assert.ok(colorHex.includes("rgba(128, 128, 0"));
+
+  // WASM Acceleration test for interpolate with extrapolation options
+  const mockWasm = {
+    interpolate_extrapolate(v, input, output, left, right) {
+      assert.equal(v, 150);
+      assert.equal(left, "clamp");
+      assert.equal(right, "clamp");
+      return 100;
+    }
+  };
+
+  globalThis.wasmInstance = mockWasm;
+  const wasmRes = interpolate(150, [0, 100], [0, 100], { extrapolateRight: "clamp", extrapolateLeft: "clamp" });
+  assert.equal(wasmRes, 100);
+  delete globalThis.wasmInstance;
 });
 
 test("Remotion Sequence & Series context propagation & createRemotionAdapter", () => {
