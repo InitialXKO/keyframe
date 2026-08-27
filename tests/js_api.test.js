@@ -6,7 +6,7 @@ import { spring, interpolate, interpolateColors, Sequence, Series, createRemotio
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
-test("JS Fallback: Evaluates clip keyframes accurately without WASM instance (Issue #2 reproduction)", async () => {
+test("JS Evaluator: Evaluates clip keyframes accurately without WASM instance (Issue #2 reproduction)", async () => {
   const engine = new Engine(); // No wasmInstance
   const clip = new Clip("test")
     .duration(2000)
@@ -14,9 +14,9 @@ test("JS Fallback: Evaluates clip keyframes accurately without WASM instance (Is
     .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().translateX(500).build()));
   engine.addClip(clip);
   engine.addInstances([new Instance("test", "i1")]);
-  await engine.prepare();
+  await engine.prepare({ storage: { enabled: false } }).catch(() => {});
 
-  const e = engine.getEvaluatedInstances(1000)[0];
+  const e = engine.getEvaluatedInstances(1000, true)[0];
   // Expected tx = 250 (linear interpolation halfway through 2000ms duration)
   assert.equal(e.transformMatrix[12], 250);
   assert.equal(e.transformMatrix[13], 0);
@@ -24,7 +24,7 @@ test("JS Fallback: Evaluates clip keyframes accurately without WASM instance (Is
   assert.equal(e.visible, true);
 });
 
-test("JS Fallback: Supports Additive BlendMode, delay, time remapping, and initial transform", async () => {
+test("JS Evaluator: Supports Additive BlendMode, delay, time remapping, and initial transform", async () => {
   const engine = new Engine();
   const clip = new Clip("clip1")
     .duration(1000)
@@ -39,10 +39,10 @@ test("JS Fallback: Supports Additive BlendMode, delay, time remapping, and initi
 
   engine.addClip(clip);
   engine.addInstances([inst]);
-  await engine.prepare();
+  await engine.prepare({ storage: { enabled: false } }).catch(() => {});
 
   // Before delay (at t=100ms)
-  const evalBeforeDelay = engine.getEvaluatedInstances(100)[0];
+  const evalBeforeDelay = engine.getEvaluatedInstances(100, true)[0];
   assert.equal(evalBeforeDelay.visible, false);
   assert.equal(evalBeforeDelay.opacity, 0.0);
 
@@ -50,7 +50,7 @@ test("JS Fallback: Supports Additive BlendMode, delay, time remapping, and initi
   // elapsed = (400 - 200) * 2.0 = 400ms localTime
   // clip linear interpolation: tx = 40
   // Additive blend with initial tx=50: final tx = 50 + 40 = 90
-  const evalActive = engine.getEvaluatedInstances(400)[0];
+  const evalActive = engine.getEvaluatedInstances(400, true)[0];
   assert.equal(evalActive.visible, true);
   assert.equal(evalActive.transformMatrix[12], 90);
 });
@@ -164,7 +164,17 @@ test("Canvas2DRenderer & AutoRenderer createRenderer fallback", async () => {
   const renderer = await createRenderer(canvas, "canvas2d");
   assert.equal(renderer.getBackendType(), "canvas2d");
 
-  const engine = new Engine();
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const mockWasm = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 1,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => 80,
+    prepare: () => {},
+    memory,
+  };
+  const engine = new Engine(mockWasm);
   const clip = new Clip("c1").duration(1000);
   engine.addClip(clip);
   engine.addInstances([new Instance("c1", "inst1")]);
@@ -175,7 +185,17 @@ test("Canvas2DRenderer & AutoRenderer createRenderer fallback", async () => {
 });
 
 test("Engine DevTools messaging integration", async () => {
-  const engine = new Engine();
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const mockWasm = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 1,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => 80,
+    prepare: () => {},
+    memory,
+  };
+  const engine = new Engine(mockWasm);
   const clip = new Clip("c1").duration(1000);
   engine.addClip(clip);
   engine.addInstances([new Instance("c1", "inst1")]);
@@ -201,7 +221,15 @@ test("Engine DevTools messaging integration", async () => {
 
 test("StorageAdapter bakeStreamToOPFS chunked streaming bake", async () => {
   const adapter = new StorageAdapter();
-  const engine = new Engine();
+  const mockWasm = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 1,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => 80,
+    prepare: () => {},
+  };
+  const engine = new Engine(mockWasm);
   const clip = new Clip("c1").duration(2000);
   engine.addClip(clip);
   engine.addInstances([new Instance("c1", "inst1")]);
@@ -266,11 +294,11 @@ test("Engine WASM Memory binding, auto-resolution, and error handling", async ()
   // Clean up global state
   delete (globalThis).wasmMemory;
 
-  // 5. Fallback JS evaluation when no WASM instance is provided
+  // 5. Fallback JS evaluation when skipEvaluate is set to true
   const jsEngine = new Engine();
   jsEngine.addInstances([new Instance("c1", "inst1")]);
-  await jsEngine.prepare();
-  const jsList = jsEngine.getEvaluatedInstances(0);
+  await jsEngine.prepare({ storage: { enabled: false } }).catch(() => {});
+  const jsList = jsEngine.getEvaluatedInstances(0, true);
   assert.equal(jsList.length, 1);
 });
 
@@ -311,15 +339,18 @@ test("Engine.prepare() compatibility validation and unprepared guardrail", async
     return true;
   });
 
-  // Successful prepare with mock WASM or JS fallback
-  const validEngine = new Engine();
+  // Validation 3: WASM loading failure throws explicit error (Fail Fast)
+  const WASMErrorEngine = new Engine();
   let stages = [];
-  await validEngine.prepare({
-    wasmUrl: "invalid-url-force-error",
-    storage: { enabled: false },
-    onProgress: (stage) => stages.push(stage),
-  }).catch(() => {
-    // If wasm fetch fails on invalid url, stages recorded validation & wasm_loading
+  await assert.rejects(async () => {
+    await WASMErrorEngine.prepare({
+      wasmUrl: "invalid-url-force-error",
+      storage: { enabled: false },
+      onProgress: (stage) => stages.push(stage),
+    });
+  }, (err) => {
+    assert.match(err.message, /Failed to load WASM engine module from "invalid-url-force-error"/);
+    return true;
   });
 
   assert.ok(stages.includes("validation"));
