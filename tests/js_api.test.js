@@ -74,6 +74,23 @@ test("JS Evaluator: Supports Additive BlendMode, delay, time remapping, and init
   assert.equal(evalActive.transformMatrix[12], 90);
 });
 
+test("TransformBuilder rotateX, rotateY, rotateZ, and rotateEuler helper methods", () => {
+  const tbX = new TransformBuilder().rotateX(90).build();
+  assert.ok(Math.abs(tbX.rotation_quat[0] - Math.sin(Math.PI / 4)) < 1e-5);
+  assert.ok(Math.abs(tbX.rotation_quat[3] - Math.cos(Math.PI / 4)) < 1e-5);
+
+  const tbY = new TransformBuilder().rotateY(180).build();
+  assert.ok(Math.abs(tbY.rotation_quat[1] - 1.0) < 1e-5);
+  assert.ok(Math.abs(tbY.rotation_quat[3] - 0.0) < 1e-5);
+
+  const tbZ = new TransformBuilder().rotateZ(360).build();
+  assert.ok(Math.abs(tbZ.rotation_quat[2] - 0.0) < 1e-5);
+  assert.ok(Math.abs(tbZ.rotation_quat[3] - (-1.0)) < 1e-5 || Math.abs(tbZ.rotation_quat[3] - 1.0) < 1e-5);
+
+  const tbEuler = new TransformBuilder().rotateEuler(0, 90, 0).build();
+  assert.ok(Math.abs(tbEuler.rotation_quat[1] - Math.sin(Math.PI / 4)) < 1e-5);
+});
+
 test("Builder API constructs valid Clip and Instance IR with Additive BlendMode & Time Remapping", () => {
   const engine = new Engine();
 
