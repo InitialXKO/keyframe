@@ -189,6 +189,42 @@ impl KeyframeEngine {
         self.inner.bake_range(start_ms, end_ms, fps)
     }
 
+    pub fn bake_stream(
+        &mut self,
+        start_ms: f64,
+        end_ms: f64,
+        fps: f64,
+        on_chunk: &js_sys::Function,
+    ) -> Result<f64, JsValue> {
+        let this = JsValue::NULL;
+        let mut js_err: Option<JsValue> = None;
+        let total = self
+            .inner
+            .bake_stream(start_ms, end_ms, fps, |chunk| {
+                let uint8_arr = unsafe { js_sys::Uint8Array::view(chunk) };
+                match on_chunk.call1(&this, &uint8_arr) {
+                    Ok(val) => {
+                        if val.as_bool() == Some(false) {
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                    Err(err) => {
+                        js_err = Some(err);
+                        false
+                    }
+                }
+            })
+            .map_err(|e| JsValue::from_str(&e))?;
+
+        if let Some(err) = js_err {
+            return Err(err);
+        }
+
+        Ok(total as f64)
+    }
+
     pub fn get_instance_buffer_ptr(&self) -> *const u8 {
         gpu_exporter::GpuExporter::get_instance_buffer_bytes(&self.inner.evaluated_gpu_instances)
             .as_ptr()

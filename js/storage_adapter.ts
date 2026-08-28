@@ -70,6 +70,29 @@ export class StorageAdapter {
 
     await this.opfs.remove(key);
 
+    if (typeof engine.bakeStream === "function") {
+      let bytesWritten = 0;
+      const totalFrames = Math.floor(totalDuration / (1000 / fps)) + 1;
+      const bytesPerFrame = (engine.instances?.length || 1) * 80;
+      const estimatedTotalBytes = totalFrames * bytesPerFrame;
+
+      await engine.bakeStream(
+        { startMs, endMs, fps },
+        async (chunk: Uint8Array) => {
+          if (chunk && chunk.byteLength > 0) {
+            await this.opfs.appendChunk(key, chunk);
+            bytesWritten += chunk.byteLength;
+            if (onProgress && estimatedTotalBytes > 0) {
+              const progress = Math.min(100, Math.round((bytesWritten / estimatedTotalBytes) * 100));
+              onProgress(progress);
+            }
+          }
+        }
+      );
+      if (onProgress) onProgress(100);
+      return;
+    }
+
     let current = startMs;
     const frameDuration = 1000 / fps;
 

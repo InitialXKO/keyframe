@@ -147,3 +147,118 @@ export class OPFSStorage {
     this.memoryFallback.delete(filename);
   }
 }
+
+export interface OPFSWriter {
+  write(chunk: Uint8Array): void | Promise<void>;
+  close(): void | Promise<void>;
+  flush?(): void | Promise<void>;
+  getBytes?(): Uint8Array;
+}
+
+export class SyncOPFSWriter implements OPFSWriter {
+  private accessHandle: any;
+
+  constructor(accessHandle: any) {
+    this.accessHandle = accessHandle;
+  }
+
+  public write(chunk: Uint8Array): void {
+    this.accessHandle.write(chunk);
+  }
+
+  public flush(): void {
+    if (typeof this.accessHandle.flush === "function") {
+      this.accessHandle.flush();
+    }
+  }
+
+  public close(): void {
+    this.flush();
+    if (typeof this.accessHandle.close === "function") {
+      this.accessHandle.close();
+    }
+  }
+}
+
+export class AsyncOPFSWriter implements OPFSWriter {
+  private writableStream: any;
+
+  constructor(writableStream: any) {
+    this.writableStream = writableStream;
+  }
+
+  public async write(chunk: Uint8Array): Promise<void> {
+    await this.writableStream.write(chunk);
+  }
+
+  public async close(): Promise<void> {
+    await this.writableStream.close();
+  }
+}
+
+export class MemoryWriter implements OPFSWriter {
+  private chunks: Uint8Array[] = [];
+  private totalLength = 0;
+
+  public write(chunk: Uint8Array): void {
+    const copy = Uint8Array.from(chunk);
+    this.chunks.push(copy);
+    this.totalLength += copy.byteLength;
+  }
+
+  public close(): void {}
+
+  public getBytes(): Uint8Array {
+    const result = new Uint8Array(this.totalLength);
+    let offset = 0;
+    for (const chunk of this.chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result;
+  }
+}
+
+export async function createSyncOPFSWriter(filename: string): Promise<OPFSWriter> {
+  if (typeof navigator !== "undefined" && navigator.storage && navigator.storage.getDirectory) {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const fileHandle = await root.getFileHandle(filename, { create: true });
+      if (typeof (fileHandle as any).createSyncAccessHandle === "function") {
+        const accessHandle = await (fileHandle as any).createSyncAccessHandle();
+        return new SyncOPFSWriter(accessHandle);
+      }
+    } catch (err) {
+      console.warn("createSyncOPFSWriter failed (e.g. main thread restriction), falling back to AsyncOPFSWriter:", err);
+    }
+  }
+  return createAsyncOPFSWriter(filename);
+}
+
+export async function createAsyncOPFSWriter(filename: string): Promise<OPFSWriter> {
+  if (typeof navigator !== "undefined" && navigator.storage && navigator.storage.getDirectory) {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const fileHandle = await root.getFileHandle(filename, { create: true });
+      if (typeof (fileHandle as any).createWritable === "function") {
+        const writable = await (fileHandle as any).createWritable();
+        return new AsyncOPFSWriter(writable);
+      }
+    } catch (err) {
+      console.warn("createAsyncOPFSWriter failed, falling back to MemoryWriter:", err);
+    }
+  }
+  return new MemoryWriter();
+}
+
+export function createMemoryWriter(): MemoryWriter {
+  return new MemoryWriter();
+}
+
+export async function createOPFSWriter(filename: string): Promise<OPFSWriter> {
+  try {
+    return await createSyncOPFSWriter(filename);
+  } catch (err) {
+    return await createAsyncOPFSWriter(filename);
+  }
+}

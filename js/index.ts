@@ -1,6 +1,16 @@
 export * from "./builder/index.js";
 export * as Remotion from "./remotion/index.js";
-export { OPFSStorage } from "./opfs_storage.js";
+export {
+  OPFSStorage,
+  OPFSWriter,
+  SyncOPFSWriter,
+  AsyncOPFSWriter,
+  MemoryWriter,
+  createSyncOPFSWriter,
+  createAsyncOPFSWriter,
+  createMemoryWriter,
+  createOPFSWriter,
+} from "./opfs_storage.js";
 export { StorageAdapter } from "./storage_adapter.js";
 export * from "./renderer/index.js";
 export * from "./adapters/index.js";

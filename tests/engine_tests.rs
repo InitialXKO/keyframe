@@ -268,6 +268,79 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_bake_stream_chunking_and_early_termination() {
+        let mut engine = EngineState::new();
+        let clip_data = AnimationClipData {
+            id: "stream_clip".to_string(),
+            duration: 2000.0,
+            iterations: 1.0,
+            keyframes: vec![
+                KeyframeData {
+                    time: 0.0,
+                    transform: TransformData::default(),
+                    opacity: 1.0,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+                KeyframeData {
+                    time: 2000.0,
+                    transform: TransformData {
+                        translation: [100.0, 0.0, 0.0],
+                        ..Default::default()
+                    },
+                    opacity: 1.0,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+            ],
+            metadata: None,
+        };
+        engine.add_clip(clip_data).unwrap();
+
+        // 100 instances x 80 bytes = 8KB per frame
+        for i in 0..100 {
+            let inst_data = InstanceData {
+                id: format!("inst_{}", i),
+                clip_id: "stream_clip".to_string(),
+                opacity: 1.0,
+                visible: true,
+                delay: 0.0,
+                duration_scale: 1.0,
+                time_remapping_speed: 1.0,
+                blend_mode: BlendMode::Override,
+                initial_transform: TransformData::default(),
+            };
+            engine.add_instance(inst_data).unwrap();
+        }
+
+        let mut chunks_received = 0;
+        let mut total_bytes_received = 0usize;
+
+        let total_baked = engine
+            .bake_stream(0.0, 2000.0, 30.0, |chunk| {
+                chunks_received += 1;
+                total_bytes_received += chunk.len();
+                true
+            })
+            .unwrap();
+
+        assert!(chunks_received > 0);
+        assert_eq!(total_baked as usize, total_bytes_received);
+
+        // Test early termination
+        let mut early_chunks = 0;
+        let early_baked = engine
+            .bake_stream(0.0, 2000.0, 30.0, |_chunk| {
+                early_chunks += 1;
+                false // Stop immediately after first chunk
+            })
+            .unwrap();
+
+        assert_eq!(early_chunks, 1);
+        assert!(early_baked < total_baked);
+    }
+
+    #[test]
     fn test_timeline_flattening() {
         let root = TimelineNode {
             id: "root".to_string(),

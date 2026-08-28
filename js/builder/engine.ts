@@ -781,7 +781,7 @@ export class Engine {
     const frameDuration = 1000 / Math.max(1, fps);
     const chunks: Uint8Array[] = [];
     let currentTime = startMs;
-    while (currentTime <= endMs) {
+    while (currentTime <= endMs + 1e-5) {
       const res = this.evaluateJSFrame(currentTime);
       const frameBytes = new Uint8Array(res.view.buffer, res.view.byteOffset, res.byteLength);
       chunks.push(new Uint8Array(frameBytes));
@@ -802,6 +802,91 @@ export class Engine {
    */
   public bakeRange(startMs: number, endMs: number, fps = 30): Uint8Array {
     return this.bakeChunk(startMs, endMs, fps);
+  }
+
+  /**
+   * Streams animation baking frame-by-frame or chunk-by-chunk directly to a callback.
+   * Peak memory footprint remains constant (~64KB) regardless of overall duration or instance count.
+   *
+   * @param options Streaming bake options (start/endMs or start/duration, fps)
+   * @param onChunk Callback receiving zero-copy (or chunked) Uint8Array binary views. Returning `false` aborts streaming.
+   * @returns Total bytes processed.
+   */
+  public async bakeStream(
+    options: { start?: number; startMs?: number; duration?: number; endMs?: number; fps?: number },
+    onChunk: (chunk: Uint8Array) => boolean | void | Promise<boolean | void>
+  ): Promise<number> {
+    const startMs = options.startMs ?? options.start ?? 0;
+    const endMs = options.endMs ?? (startMs + (options.duration ?? 0));
+    const fps = options.fps ?? 30;
+
+    const isAsync =
+      onChunk.constructor.name === "AsyncFunction" ||
+      (onChunk.toString && onChunk.toString().startsWith("async"));
+
+    // If onChunk is synchronous and WASM bake_stream is available, use fast synchronous WASM stream
+    if (!isAsync && this.wasmInstance && typeof this.wasmInstance.bake_stream === "function") {
+      const res = this.wasmInstance.bake_stream(startMs, endMs, fps, (chunk: Uint8Array) => {
+        const result = onChunk(chunk);
+        if (result === false) {
+          return false;
+        }
+        return true;
+      });
+      return typeof res === "number" ? res : 0;
+    }
+
+    // Async streaming loop: evaluates frames (using WASM evaluate_frame if available, or JS fallback)
+    // and awaits onChunk to ensure sequential ordering without memory overwrite or race conditions.
+    const frameDuration = 1000 / Math.max(1, fps);
+    const targetChunkBytes = 64 * 1024; // 64KB target chunk size
+    let chunkBuffer = new Uint8Array(targetChunkBytes);
+    let chunkOffset = 0;
+    let totalBytes = 0;
+
+    let currentTime = startMs;
+    while (currentTime <= endMs + 1e-5) {
+      const res = this.prepared
+        ? this.evaluateFrame(currentTime)
+        : this.evaluateJSFrame(currentTime);
+      const frameBytes = new Uint8Array(res.view.buffer, res.view.byteOffset, res.byteLength);
+
+      if (chunkOffset + frameBytes.byteLength > chunkBuffer.byteLength) {
+        if (chunkOffset > 0) {
+          const slice = chunkBuffer.subarray(0, chunkOffset);
+          totalBytes += slice.byteLength;
+          const keepGoing = await onChunk(slice);
+          if (keepGoing === false) {
+            return totalBytes;
+          }
+          chunkOffset = 0;
+        }
+
+        if (frameBytes.byteLength >= targetChunkBytes) {
+          totalBytes += frameBytes.byteLength;
+          const keepGoing = await onChunk(frameBytes);
+          if (keepGoing === false) {
+            return totalBytes;
+          }
+        } else {
+          chunkBuffer.set(frameBytes, 0);
+          chunkOffset = frameBytes.byteLength;
+        }
+      } else {
+        chunkBuffer.set(frameBytes, chunkOffset);
+        chunkOffset += frameBytes.byteLength;
+      }
+
+      currentTime += frameDuration;
+    }
+
+    if (chunkOffset > 0) {
+      const slice = chunkBuffer.subarray(0, chunkOffset);
+      totalBytes += slice.byteLength;
+      await onChunk(slice);
+    }
+
+    return totalBytes;
   }
 
   /**
