@@ -68,10 +68,11 @@ function renderKeyframeCurves(clips) {
 
   const clip = clips[0];
   if (clipDataEl) {
+    const easingVal = clip.metadata?.easing || clip.easing || "N/A";
     clipDataEl.innerHTML = `
       <strong>ID:</strong> ${clip.id} |
       <strong>Duration:</strong> ${clip.duration}ms |
-      <strong>Easing:</strong> ${clip.easing} |
+      <strong>Easing:</strong> ${easingVal} |
       <strong>Keyframes:</strong> ${clip.keyframes ? clip.keyframes.length : 0}
     `;
   }

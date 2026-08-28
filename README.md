@@ -124,7 +124,6 @@ const engine = new Engine();
 // 创建关键帧动画剪辑
 const clip = new Clip("bounce_clip")
   .duration(2000)
-  .easing(Easing.EaseInOut)
   .addKeyframe(
     new Keyframe(0)
       .transform(new TransformBuilder().translateY(0).scale(1).build())

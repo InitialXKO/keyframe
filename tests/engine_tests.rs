@@ -122,7 +122,6 @@ mod unit_tests {
         let clip_data = AnimationClipData {
             id: "clip1".to_string(),
             duration: 1000.0,
-            easing: EasingType::Linear,
             iterations: 1.0,
             keyframes: vec![
                 KeyframeData {
@@ -143,6 +142,7 @@ mod unit_tests {
                     cubic_params: None,
                 },
             ],
+            metadata: None,
         };
         engine.add_clip(clip_data).unwrap();
 
@@ -170,7 +170,6 @@ mod unit_tests {
         let clip_data = AnimationClipData {
             id: "particle_clip".to_string(),
             duration: 2000.0,
-            easing: EasingType::EaseInOut,
             iterations: 1.0,
             keyframes: vec![
                 KeyframeData {
@@ -191,6 +190,7 @@ mod unit_tests {
                     cubic_params: None,
                 },
             ],
+            metadata: None,
         };
         engine.add_clip(clip_data).unwrap();
 
@@ -223,7 +223,6 @@ mod unit_tests {
         let clip_data = AnimationClipData {
             id: "chunk_clip".to_string(),
             duration: 2000.0,
-            easing: EasingType::Linear,
             iterations: 1.0,
             keyframes: vec![
                 KeyframeData {
@@ -244,6 +243,7 @@ mod unit_tests {
                     cubic_params: None,
                 },
             ],
+            metadata: None,
         };
         engine.add_clip(clip_data).unwrap();
 

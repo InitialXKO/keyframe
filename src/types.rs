@@ -87,7 +87,6 @@ pub struct KeyframeData {
 pub struct AnimationClipData {
     pub id: String,
     pub duration: f64, // ms
-    pub easing: EasingType,
     #[serde(
         deserialize_with = "deserialize_iterations",
         serialize_with = "serialize_iterations",
@@ -95,6 +94,8 @@ pub struct AnimationClipData {
     )]
     pub iterations: f64,
     pub keyframes: Vec<KeyframeData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 fn default_iterations() -> f64 {

@@ -9,7 +9,6 @@ async function initDOMDemo() {
   const engine = new Engine();
   const clip = new Clip('bounce')
     .duration(2000)
-    .easing(Easing.EaseInOut)
     .iterations(Infinity)
     .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translate(0, 0, 0).build()))
     .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translate(300, 200, 0).build()))

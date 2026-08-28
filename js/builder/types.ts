@@ -61,9 +61,9 @@ export interface KeyframeData {
 export interface AnimationClipData {
   id: string;
   duration: number;
-  easing: Easing;
   iterations: number;
   keyframes: KeyframeData[];
+  metadata?: Record<string, any>;
 }
 
 export interface InstanceData {

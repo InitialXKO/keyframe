@@ -1,12 +1,12 @@
-import { AnimationClipData, Easing, KeyframeData } from "./types.js";
+import { AnimationClipData, KeyframeData } from "./types.js";
 import { Keyframe } from "./keyframe.js";
 
 export class Clip {
   public id: string;
   private _duration = 1000;
-  private _easing: Easing = Easing.Linear;
   private _iterations = 1;
   private _keyframes: KeyframeData[] = [];
+  private _metadata?: Record<string, any>;
 
   constructor(id: string) {
     this.id = id;
@@ -17,8 +17,8 @@ export class Clip {
     return this;
   }
 
-  public easing(e: Easing): this {
-    this._easing = e;
+  public metadata(data: Record<string, any>): this {
+    this._metadata = { ...this._metadata, ...data };
     return this;
   }
 
@@ -40,9 +40,9 @@ export class Clip {
     return {
       id: this.id,
       duration: this._duration,
-      easing: this._easing,
       iterations: this._iterations,
       keyframes: [...this._keyframes],
+      ...(this._metadata ? { metadata: { ...this._metadata } } : {}),
     };
   }
 }
