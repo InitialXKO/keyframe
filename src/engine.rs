@@ -126,6 +126,45 @@ impl EngineState {
         self.bake_chunk(start_ms, end_ms, fps)
     }
 
+    pub fn bake_stream<F>(&mut self, start_ms: f64, end_ms: f64, fps: f64, mut on_chunk: F) -> Result<u64, String>
+    where
+        F: FnMut(&[u8]) -> bool,
+    {
+        if !self.prepared {
+            let _ = self.prepare();
+        }
+        let frame_duration = 1000.0 / fps.max(1.0);
+        let target_chunk_bytes = 64 * 1024; // 64KB target chunk size
+        let mut total_bytes: u64 = 0;
+        let mut chunk_buffer: Vec<u8> = Vec::with_capacity(target_chunk_bytes);
+
+        let mut current_time = start_ms;
+        while current_time <= end_ms {
+            let frame_instances = self.evaluate_frame(current_time);
+            let bytes = GpuExporter::get_instance_buffer_bytes(frame_instances);
+            chunk_buffer.extend_from_slice(bytes);
+
+            if chunk_buffer.len() >= target_chunk_bytes {
+                total_bytes += chunk_buffer.len() as u64;
+                let keep_going = on_chunk(&chunk_buffer);
+                chunk_buffer.clear();
+                if !keep_going {
+                    return Ok(total_bytes);
+                }
+            }
+
+            current_time += frame_duration;
+        }
+
+        if !chunk_buffer.is_empty() {
+            total_bytes += chunk_buffer.len() as u64;
+            let _ = on_chunk(&chunk_buffer);
+            chunk_buffer.clear();
+        }
+
+        Ok(total_bytes)
+    }
+
     pub fn export_ir(&self) -> EngineIR {
         EngineIR {
             clips: self.clips.values().map(|c| c.data.clone()).collect(),

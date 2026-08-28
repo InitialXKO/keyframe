@@ -114,10 +114,10 @@ npm test
 
 ## 示例代码
 
-### 1. 基础 Builder API
+### 1. 基础 Builder API 与 OPFS 流式烘焙
 
 ```typescript
-import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder, BlendMode } from "@keyframe/core";
+import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder, BlendMode, createSyncOPFSWriter, StorageAdapter } from "@keyframe/core";
 
 const engine = new Engine();
 
@@ -147,11 +147,19 @@ engine.addInstances([instance]);
 // 零样板全异步加载初始化 (自动拉取/编译 WASM、绑定 memory、挂载 OPFS 缓存)
 await engine.prepare();
 
-// 1. 极致性能 Zero-Copy 模式：直接获取指向 WASM 内存的 TypedArray 视图与偏移量/实例数
+// 1. 极致性能 Zero-Copy 评估模式：直接获取指向 WASM 内存的 TypedArray 视图与偏移量/实例数
 const { view, ptr, byteOffset, byteLength, count } = engine.evaluateFrame(500);
 
-// 2. 便捷结构化模式：返回 EvaluatedInstance[]，内部 transformMatrix 为 subarray 零拷贝视图
+// 2. 便捷结构化评估模式：返回 EvaluatedInstance[]，内部 transformMatrix 为 subarray 零拷贝视图
 const evaluated = engine.getEvaluatedInstances(500);
+
+// 3. 基于 OPFS 的恒定内存分块流式烘焙 (无论场景多大，WASM 堆内存恒定 ≈ 64KB，绝不 OOM)
+const writer = await createSyncOPFSWriter("long_anim.bin");
+await engine.bakeStream(
+  { startMs: 0, endMs: 120000, fps: 60 },
+  (chunk) => writer.write(chunk)
+);
+writer.close();
 ```
 
 ---

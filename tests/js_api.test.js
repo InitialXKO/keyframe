@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { Engine, Clip, Instance, Keyframe, Easing, BlendMode, TransformBuilder, Canvas2DRenderer, createRenderer } from "../dist/index.js";
+import { Engine, Clip, Instance, Keyframe, Easing, BlendMode, TransformBuilder, Canvas2DRenderer, createRenderer, MemoryWriter, createSyncOPFSWriter, createAsyncOPFSWriter, createMemoryWriter, createOPFSWriter } from "../dist/index.js";
 import { spring, interpolate, interpolateColors, Sequence, Series, createRemotionAdapter, setRemotionFrameContext, useCurrentFrame } from "../dist/remotion/index.js";
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
@@ -515,4 +515,102 @@ test("bakeChunk binary format, Engine.decodeBakedChunk and StorageAdapter loadBa
   assert.equal(decodedInstancesObj.length, decoded.length);
   assert.equal(decodedInstancesObj[0].visible, true);
   assert.equal(decodedInstancesObj[0].transformMatrix[12], 10);
+});
+
+test("Engine bakeStream streaming bake and OPFSWriter integration", async () => {
+  const engine = new Engine();
+  const clip = new Clip("stream_clip")
+    .duration(2000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().translateX(100).build()));
+
+  engine.addClip(clip);
+  const instances = [];
+  for (let i = 0; i < 1000; i++) {
+    instances.push(new Instance("stream_clip", `i_${i}`));
+  }
+  engine.addInstances(instances);
+  engine.prepared = true;
+
+  const memoryWriter = createMemoryWriter();
+  let chunkCount = 0;
+
+  const totalBytes = await engine.bakeStream(
+    { startMs: 0, endMs: 2000, fps: 30 },
+    (chunk) => {
+      chunkCount++;
+      memoryWriter.write(chunk);
+    }
+  );
+
+  memoryWriter.close();
+  const bakedBytes = memoryWriter.getBytes();
+  assert.equal(bakedBytes.byteLength, totalBytes);
+  assert.ok(totalBytes > 0);
+  assert.ok(chunkCount >= 1);
+
+  // Test early termination in JS streaming mode
+  let earlyChunkCount = 0;
+  const earlyTotal = await engine.bakeStream(
+    { startMs: 0, endMs: 2000, fps: 30 },
+    (_chunk) => {
+      earlyChunkCount++;
+      return false; // abort streaming
+    }
+  );
+
+  assert.equal(earlyChunkCount, 1);
+  assert.ok(earlyTotal < totalBytes);
+});
+
+test("Engine bakeStream with WASM mock & async callback support", async () => {
+  let streamCallCount = 0;
+  const mockWasm = {
+    add_clip_json: () => {},
+    add_instance_json: () => {},
+    evaluate_frame: () => 1,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => 80,
+    prepare: () => {},
+    bake_stream: (startMs, endMs, fps, onChunk) => {
+      streamCallCount++;
+      const dummyChunk = new Uint8Array(80);
+      const ok = onChunk(dummyChunk);
+      return ok === false ? 0 : 80;
+    },
+  };
+
+  const engine = new Engine(mockWasm);
+  engine.addInstances([new Instance("c1", "i1")]);
+  engine.prepared = true;
+
+  // 1. Sync callback via WASM
+  let syncReceived = false;
+  const syncBytes = await engine.bakeStream(
+    { startMs: 0, endMs: 1000, fps: 30 },
+    (chunk) => {
+      syncReceived = true;
+      assert.equal(chunk.byteLength, 80);
+      return true;
+    }
+  );
+  assert.ok(syncReceived);
+  assert.equal(streamCallCount, 1);
+  assert.equal(syncBytes, 80);
+
+  // 2. Async callback via WASM (should safely fall back to JS async loop)
+  let asyncReceivedBytes = 0;
+  const asyncTotal = await engine.bakeStream(
+    { startMs: 0, endMs: 1000, fps: 30 },
+    async (chunk) => {
+      await new Promise((r) => setTimeout(r, 1));
+      asyncReceivedBytes += chunk.byteLength;
+      return true;
+    }
+  );
+
+  // WASM bake_stream is bypassed for async callbacks to avoid synchronous memory race conditions
+  assert.equal(streamCallCount, 1);
+  assert.equal(asyncReceivedBytes, 2480);
+  assert.equal(asyncTotal, 2480);
 });
