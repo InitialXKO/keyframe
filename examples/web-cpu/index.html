@@ -21,7 +21,6 @@
     const engine = new Engine();
     const clip = new Clip('bounce')
       .duration(2000)
-      .easing(Easing.EaseInOut)
       .iterations(Infinity)
       .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(-200).translateY(-100).build()))
       .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(200).translateY(100).build()))

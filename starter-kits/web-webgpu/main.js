@@ -24,7 +24,6 @@ async function initWebGPU() {
   const engine = new Engine();
   const clip = new Clip('box_spin')
     .duration(2000)
-    .easing(Easing.Linear)
     .iterations(Infinity)
     .addKeyframe(new Keyframe(0).transform(new TransformBuilder().rotateZ(0).build()))
     .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().rotateZ(360).build()));

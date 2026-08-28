@@ -10,7 +10,6 @@ async function initRemotionExport() {
   const engine = new Engine();
   const clip = new Clip('hero_banner')
     .duration(5000)
-    .easing(Easing.EaseInOut)
     .addKeyframe(new Keyframe(0).transform({ translation: [0, 0, 0], scale: [1, 1, 1], rotation_quat: [0, 0, 0, 1], origin: [0, 0, 0] }))
     .addKeyframe(new Keyframe(5000).transform({ translation: [300, 180, 0], scale: [1.5, 1.5, 1], rotation_quat: [0, 0, 0.38, 0.92], origin: [0, 0, 0] }));
 

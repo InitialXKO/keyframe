@@ -54,7 +54,6 @@ async function initThreeDemo() {
   const engine = new Engine();
   const clip = new Clip('spin_mesh')
     .duration(3000)
-    .easing(Easing.Linear)
     .iterations(Infinity)
     .addKeyframe(new Keyframe(0).transform(new TransformBuilder().rotateY(0).rotateX(0).build()))
     .addKeyframe(new Keyframe(3000).transform(new TransformBuilder().rotateY(360).rotateX(360).build()));

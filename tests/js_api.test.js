@@ -96,7 +96,7 @@ test("Builder API constructs valid Clip and Instance IR with Additive BlendMode 
 
   const clip = new Clip("test_clip")
     .duration(2000)
-    .easing(Easing.EaseInOut)
+    .metadata({ easing: Easing.EaseInOut })
     .iterations(Infinity)
     .addKeyframe(
       new Keyframe(0)
