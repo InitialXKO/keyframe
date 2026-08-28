@@ -3,10 +3,7 @@ import { IRenderer } from "./renderer.js";
 
 declare global {
   interface Navigator {
-    gpu?: {
-      requestAdapter(): Promise<any>;
-      getPreferredCanvasFormat(): string;
-    };
+    gpu?: any;
   }
 }
 

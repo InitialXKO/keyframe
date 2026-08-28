@@ -1,5 +1,6 @@
 import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from '../../dist/index.js';
 import { webgpuAdapter } from '../../dist/adapters/webgpu_adapter.js';
+import { controller } from '../../dist/controller.js';
 
 async function initWebGPU() {
   const status = document.getElementById('status');
@@ -99,12 +100,15 @@ async function initWebGPU() {
 
   status.innerText = "WebGPU Storage Buffer Pipeline Running!";
 
-  let startTime = performance.now();
-  function render() {
-    const time = performance.now() - startTime;
+  const player = controller.createPlayer(engine, {
+    fps: 60,
+    duration: 2000
+  });
+  player.loop(true);
 
+  player.on('frame', (timeMs) => {
     // Direct write matrices via getInstanceBufferPtr() or webgpuAdapter
-    webgpuAdapter.writeToBuffer(device, storageBuffer, time, 0, { engine });
+    webgpuAdapter.writeToBuffer(device, storageBuffer, timeMs, 0, { engine });
 
     const commandEncoder = device.createCommandEncoder();
     const textureView = context.getCurrentTexture().createView();
@@ -123,10 +127,9 @@ async function initWebGPU() {
     passEncoder.end();
 
     device.queue.submit([commandEncoder.finish()]);
-    requestAnimationFrame(render);
-  }
+  });
 
-  requestAnimationFrame(render);
+  player.play();
 }
 
 initWebGPU();

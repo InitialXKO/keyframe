@@ -1,5 +1,6 @@
 import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from '../../dist/index.js';
 import { domAdapter } from '../../dist/dom_binder.js';
+import { controller } from '../../dist/controller.js';
 
 async function initDOMDemo() {
   const container = document.getElementById('container');
@@ -47,14 +48,17 @@ async function initDOMDemo() {
     console.log("Triggered >200 elements batchApply to test performance guardrail warning.");
   });
 
-  let startTime = performance.now();
-  function render() {
-    const time = performance.now() - startTime;
-    domAdapter.batchApply(elements, time, { engine });
-    requestAnimationFrame(render);
-  }
+  const player = controller.createPlayer(engine, {
+    fps: 60,
+    duration: 2000
+  });
+  player.loop(true);
 
-  requestAnimationFrame(render);
+  player.on('frame', (timeMs) => {
+    domAdapter.batchApply(elements, timeMs, { engine });
+  });
+
+  player.play();
 }
 
 initDOMDemo();
