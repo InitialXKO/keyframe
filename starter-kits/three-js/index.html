@@ -5,10 +5,35 @@
   <title>Keyframe Engine Starter Kit - Three.js Token Context Adapter</title>
   <style>
     body { margin: 0; background: #1a1a1a; color: #fff; font-family: sans-serif; text-align: center; }
-    canvas { width: 800px; height: 600px; margin-top: 10px; }
+    #container { display: flex; justify-content: center; align-items: center; margin-top: 10px; }
+    #container canvas { width: 800px; height: 600px; border: 1px solid #333; border-radius: 4px; }
     .controls { margin-top: 10px; }
-    button { padding: 8px 16px; margin: 0 5px; cursor: pointer; }
+    button { padding: 8px 16px; margin: 0 5px; cursor: pointer; background: #2a2a2a; color: #fff; border: 1px solid #555; border-radius: 4px; }
+    button:hover { background: #3a3a3a; }
   </style>
+
+  <!--
+    ============================================================================
+    Three.js Loading Strategies / Three.js 加载方式说明:
+
+    1. Browser ESM via Import Map (Used below for no-build browser usage):
+       Allowing `import * as THREE from 'three'` directly in browser ES modules.
+       <script type="importmap">
+         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+       </script>
+
+    2. NPM / Bundler environment (Vite, Webpack, esbuild, etc.):
+       Run `npm install three`
+       and import directly in JS: `import * as THREE from 'three';`
+    ============================================================================
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
 </head>
 <body>
   <h1>Three.js Token Context Adapter Starter Kit</h1>
@@ -16,7 +41,7 @@
     <button id="toggleRasterized">Toggle Rasterized Mode (Current: Off)</button>
     <button id="toggleAbandoned">Unregister Scene (Abandoned Strategy)</button>
   </div>
-  <p id="status">Status: Active</p>
+  <p id="status">Status: Initializing Three.js Scene...</p>
   <div id="container"></div>
   <script type="module" src="./main.js"></script>
 </body>
