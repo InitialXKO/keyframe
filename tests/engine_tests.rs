@@ -69,6 +69,44 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_all_easing_variants() {
+        use keyframe_engine::easing::evaluate_easing;
+
+        let easings = [
+            EasingType::BounceIn,
+            EasingType::BounceOut,
+            EasingType::BounceInOut,
+            EasingType::ElasticIn,
+            EasingType::ElasticOut,
+            EasingType::ElasticInOut,
+            EasingType::BackIn,
+            EasingType::BackOut,
+            EasingType::BackInOut,
+            EasingType::ExpoIn,
+            EasingType::ExpoOut,
+            EasingType::ExpoInOut,
+            EasingType::SineIn,
+            EasingType::SineOut,
+            EasingType::SineInOut,
+            EasingType::SpringEasing,
+        ];
+
+        for &easing in &easings {
+            let start = evaluate_easing(easing, None, 0.0);
+            let end = evaluate_easing(easing, None, 1.0);
+            let mid = evaluate_easing(easing, None, 0.5);
+
+            assert!((start - 0.0).abs() < 1e-3, "Start boundary failed for {:?}", easing);
+            if easing == EasingType::SpringEasing {
+                assert!(end.is_finite(), "End value not finite for {:?}", easing);
+            } else {
+                assert!((end - 1.0).abs() < 1e-3, "End boundary failed for {:?}", easing);
+            }
+            assert!(mid.is_finite(), "Mid value not finite for {:?}", easing);
+        }
+    }
+
+    #[test]
     fn test_cubic_bezier_solving() {
         let res_start = solve_cubic_bezier(0.25, 0.1, 0.25, 1.0, 0.0);
         let res_end = solve_cubic_bezier(0.25, 0.1, 0.25, 1.0, 1.0);

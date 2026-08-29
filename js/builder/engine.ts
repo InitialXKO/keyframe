@@ -24,6 +24,123 @@ function solveCubicBezier(p1x: number, p1y: number, p2x: number, p2y: number, t:
   return 3.0 * oneMinusU * oneMinusU * u * p1y + 3.0 * oneMinusU * u * u * p2y + u * u * u;
 }
 
+function bounceOut(t: number): number {
+  if (t < 1.0 / 2.75) {
+    return 7.5625 * t * t;
+  } else if (t < 2.0 / 2.75) {
+    const t2 = t - 1.5 / 2.75;
+    return 7.5625 * t2 * t2 + 0.75;
+  } else if (t < 2.5 / 2.75) {
+    const t2 = t - 2.25 / 2.75;
+    return 7.5625 * t2 * t2 + 0.9375;
+  } else {
+    const t2 = t - 2.625 / 2.75;
+    return 7.5625 * t2 * t2 + 0.984375;
+  }
+}
+
+function bounceIn(t: number): number {
+  return 1.0 - bounceOut(1.0 - t);
+}
+
+function bounceInOut(t: number): number {
+  if (t < 0.5) {
+    return (1.0 - bounceOut(1.0 - 2.0 * t)) / 2.0;
+  } else {
+    return (1.0 + bounceOut(2.0 * t - 1.0)) / 2.0;
+  }
+}
+
+function elasticOut(t: number): number {
+  if (t === 0 || t === 1) return t;
+  return Math.pow(2, -10 * t) * Math.sin(((t - 0.075) * (2.0 * Math.PI)) / 0.3) + 1.0;
+}
+
+function elasticIn(t: number): number {
+  if (t === 0 || t === 1) return t;
+  return -Math.pow(2, 10 * t - 10) * Math.sin(((t * 10 - 10.75) * (2.0 * Math.PI)) / 3.0);
+}
+
+function elasticInOut(t: number): number {
+  if (t === 0 || t === 1) return t;
+  if (t < 0.5) {
+    return -0.5 * Math.pow(2, 20 * t - 10) * Math.sin(((20 * t - 11.125) * (2.0 * Math.PI)) / 4.5);
+  } else {
+    return 0.5 * Math.pow(2, -20 * t + 10) * Math.sin(((20 * t - 11.125) * (2.0 * Math.PI)) / 4.5) + 1.0;
+  }
+}
+
+const S_BACK = 1.70158;
+
+function backIn(t: number): number {
+  return t * t * ((S_BACK + 1.0) * t - S_BACK);
+}
+
+function backOut(t: number): number {
+  const t2 = t - 1.0;
+  return t2 * t2 * ((S_BACK + 1.0) * t2 + S_BACK) + 1.0;
+}
+
+function backInOut(t: number): number {
+  const s = S_BACK * 1.525;
+  if (t < 0.5) {
+    const t2 = 2.0 * t;
+    return (t2 * t2 * ((s + 1.0) * t2 - s)) / 2.0;
+  } else {
+    const t2 = 2.0 * t - 2.0;
+    return (t2 * t2 * ((s + 1.0) * t2 + s) + 2.0) / 2.0;
+  }
+}
+
+function expoIn(t: number): number {
+  return t === 0 ? 0 : Math.pow(2, 10 * t - 10);
+}
+
+function expoOut(t: number): number {
+  return t === 1 ? 1 : 1.0 - Math.pow(2, -10 * t);
+}
+
+function expoInOut(t: number): number {
+  if (t === 0) return 0;
+  if (t === 1) return 1;
+  if (t < 0.5) return Math.pow(2, 20 * t - 10) / 2.0;
+  return (2.0 - Math.pow(2, -20 * t + 10)) / 2.0;
+}
+
+function sineIn(t: number): number {
+  return 1.0 - Math.cos((t * Math.PI) / 2.0);
+}
+
+function sineOut(t: number): number {
+  return Math.sin((t * Math.PI) / 2.0);
+}
+
+function sineInOut(t: number): number {
+  return -(Math.cos(t * Math.PI) - 1.0) / 2.0;
+}
+
+function solveSpringJS(frame: number, fps: number, damping: number, stiffness: number, mass: number): number {
+  const m = mass <= 0 ? 1.0 : mass;
+  const t = frame / fps;
+  if (t <= 0) return 0.0;
+
+  const w0 = Math.sqrt(stiffness / m);
+  const zeta = damping / (2.0 * Math.sqrt(stiffness * m));
+
+  if (Math.abs(zeta - 1.0) < 1e-5) {
+    return 1.0 - (1.0 + w0 * t) * Math.exp(-w0 * t);
+  } else if (zeta < 1.0) {
+    const wd = w0 * Math.sqrt(1.0 - zeta * zeta);
+    return 1.0 - Math.exp(-zeta * w0 * t) * ((zeta * w0 / wd) * Math.sin(wd * t) + Math.cos(wd * t));
+  } else {
+    const r1 = -w0 * (zeta - Math.sqrt(zeta * zeta - 1.0));
+    const r2 = -w0 * (zeta + Math.sqrt(zeta * zeta - 1.0));
+    const c2 = r1 / (r2 - r1);
+    const c1 = 1.0 - c2;
+    return 1.0 - (c1 * Math.exp(r1 * t) + c2 * Math.exp(r2 * t));
+  }
+}
+
 function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefined, t: number): number {
   const clampedT = Math.max(0, Math.min(1, t));
   switch (easing) {
@@ -45,6 +162,38 @@ function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefin
       return solveCubicBezier(0.42, 0.0, 0.58, 1.0, clampedT);
     case Easing.Step:
       return clampedT >= 1.0 ? 1.0 : 0.0;
+    case Easing.BounceIn:
+      return bounceIn(clampedT);
+    case Easing.BounceOut:
+      return bounceOut(clampedT);
+    case Easing.BounceInOut:
+      return bounceInOut(clampedT);
+    case Easing.ElasticIn:
+      return elasticIn(clampedT);
+    case Easing.ElasticOut:
+      return elasticOut(clampedT);
+    case Easing.ElasticInOut:
+      return elasticInOut(clampedT);
+    case Easing.BackIn:
+      return backIn(clampedT);
+    case Easing.BackOut:
+      return backOut(clampedT);
+    case Easing.BackInOut:
+      return backInOut(clampedT);
+    case Easing.ExpoIn:
+      return expoIn(clampedT);
+    case Easing.ExpoOut:
+      return expoOut(clampedT);
+    case Easing.ExpoInOut:
+      return expoInOut(clampedT);
+    case Easing.SineIn:
+      return sineIn(clampedT);
+    case Easing.SineOut:
+      return sineOut(clampedT);
+    case Easing.SineInOut:
+      return sineInOut(clampedT);
+    case Easing.SpringEasing:
+      return solveSpringJS(clampedT, 1.0, 0.5, 100.0, 1.0);
     default:
       return clampedT;
   }

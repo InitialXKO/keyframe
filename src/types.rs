@@ -11,6 +11,22 @@ pub enum EasingType {
     EaseInOut,
     CubicBezier,
     Step,
+    BounceIn,
+    BounceOut,
+    BounceInOut,
+    ElasticIn,
+    ElasticOut,
+    ElasticInOut,
+    BackIn,
+    BackOut,
+    BackInOut,
+    ExpoIn,
+    ExpoOut,
+    ExpoInOut,
+    SineIn,
+    SineOut,
+    SineInOut,
+    SpringEasing,
 }
 
 #[wasm_bindgen]
