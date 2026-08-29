@@ -37,9 +37,10 @@
     }
   },
   "scripts": {
+    "build:shaders": "node scripts/embed-shaders.js",
     "build:wasm": "wasm-pack build --target web --out-dir pkg",
-    "build:ts": "tsc",
-    "build": "npm run build:wasm && npm run build:ts",
+    "build:ts": "npm run build:shaders && tsc",
+    "build": "npm run build:shaders && npm run build:wasm && npm run build:ts",
     "publish:monorepo": "pnpm publish --filter @keyframe/core && pnpm publish --filter @keyframe/controller && pnpm publish --filter @keyframe/three && pnpm publish --filter @keyframe/webgpu && pnpm publish --filter @keyframe/dom && pnpm publish --filter @keyframe/math && pnpm publish --filter @keyframe/physics",
     "test:rs": "cargo test",
     "test:js": "node --test tests/**/*.test.js tests/**/*.test.mjs 2>/dev/null || node --test",

@@ -3,3 +3,5 @@
 /pkg
 /dist
 *.log
+packages/webgpu/src/generated/
+js/generated/

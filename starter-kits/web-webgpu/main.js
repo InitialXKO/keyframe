@@ -1,4 +1,4 @@
-import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder } from '../../dist/index.js';
+import { Engine, Clip, Instance, Keyframe, Easing, TransformBuilder, VERTEX_TEMPLATE } from '../../dist/index.js';
 import { webgpuAdapter } from '../../dist/adapters/webgpu_adapter.js';
 import { controller } from '../../dist/controller.js';
 
@@ -46,44 +46,7 @@ async function initWebGPU() {
   });
 
   const shaderModule = device.createShaderModule({
-    code: `
-      struct InstanceData {
-        transform_matrix: mat4x4<f32>,
-        opacity: f32,
-        visible: u32,
-        clip_index: u32,
-        padding: u32,
-      };
-
-      @group(0) @binding(0) var<storage, read> instances: array<InstanceData>;
-
-      struct VertexOutput {
-        @builtin(position) position: vec4<f32>,
-        @location(0) color: vec4<f32>,
-      };
-
-      @vertex
-      fn vs_main(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) instanceIndex: u32) -> VertexOutput {
-        var pos = array<vec2<f32>, 3>(
-          vec2<f32>(0.0, 0.1),
-          vec2<f32>(-0.1, -0.1),
-          vec2<f32>(0.1, -0.1)
-        );
-        let inst = instances[instanceIndex];
-        let local_pos = vec4<f32>(pos[vertexIndex], 0.0, 1.0);
-        let world_pos = inst.transform_matrix * local_pos;
-
-        var out: VertexOutput;
-        out.position = world_pos;
-        out.color = vec4<f32>(1.0, 0.5, 0.2, inst.opacity);
-        return out;
-      }
-
-      @fragment
-      fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-        return in.color;
-      }
-    `
+    code: VERTEX_TEMPLATE
   });
 
   const pipeline = device.createRenderPipeline({

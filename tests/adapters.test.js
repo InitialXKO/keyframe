@@ -260,6 +260,113 @@ test("WebGPUAdapter: Boundary probes (alignment, overflow, device lost)", () => 
   );
 });
 
+test("WebGPUAdapter: Compute & Read extensions (createComputeResources, dispatchCompute, readFromBuffer, readInstance)", async () => {
+  let createdShaderCode = "";
+  let dispatchedWorkgroups = 0;
+
+  const mockDevice = {
+    limits: { minStorageBufferOffsetAlignment: 256 },
+    isLost: false,
+    createShaderModule(desc) {
+      createdShaderCode = desc.code;
+      return { id: "shader-1" };
+    },
+    createBindGroupLayout(desc) {
+      return { id: "bgl-1" };
+    },
+    createPipelineLayout(desc) {
+      return { id: "pl-1" };
+    },
+    createComputePipeline(desc) {
+      return { id: "pipeline-1" };
+    },
+    createCommandEncoder() {
+      return {
+        beginComputePass() {
+          return {
+            setPipeline() {},
+            setBindGroup() {},
+            dispatchWorkgroups(count) {
+              dispatchedWorkgroups = count;
+            },
+            end() {}
+          };
+        },
+        copyBufferToBuffer(src, srcOffset, dst, dstOffset, size) {},
+        finish() {
+          return {};
+        }
+      };
+    },
+    queue: {
+      submit(cmds) {}
+    },
+    createBuffer(desc) {
+      return {
+        size: desc.size,
+        async mapAsync() {},
+        getMappedRange(off, sz) {
+          const buf = new ArrayBuffer(sz);
+          const view = new Uint8Array(buf);
+          view.fill(42);
+          return buf;
+        },
+        unmap() {},
+        destroy() {}
+      };
+    }
+  };
+
+  // 1. Test createComputeResources
+  const res = webgpuAdapter.createComputeResources(mockDevice);
+  assert.ok(res.pipeline);
+  assert.ok(createdShaderCode.includes("struct InstanceInput"));
+  assert.ok(createdShaderCode.includes("fn main("));
+
+  // 2. Test dispatchCompute
+  const mockBuffer = { size: 1024 };
+  webgpuAdapter.dispatchCompute(mockDevice, mockBuffer, 100, 0, {
+    pipeline: res.pipeline,
+    instanceCount: 10
+  });
+  assert.equal(dispatchedWorkgroups, 1);
+
+  // 3. Test boundary checks on dispatchCompute
+  assert.throws(
+    () => {
+      webgpuAdapter.dispatchCompute(mockDevice, mockBuffer, 100, 1, { pipeline: res.pipeline });
+    },
+    (err) => err instanceof TypeError && err.message.includes("minStorageBufferOffsetAlignment")
+  );
+
+  assert.throws(
+    () => {
+      webgpuAdapter.dispatchCompute(mockDevice, mockBuffer, 100, 0, {
+        pipeline: res.pipeline,
+        instanceCount: 100
+      });
+    },
+    (err) => err instanceof RangeError && err.message.includes("Buffer overflow")
+  );
+
+  // 4. Test readFromBuffer & readInstance
+  const readData = await webgpuAdapter.readFromBuffer(mockDevice, mockBuffer, { offset: 0, size: 80 });
+  assert.equal(readData.byteLength, 80);
+  assert.equal(new Uint8Array(readData)[0], 42);
+
+  const instData = await webgpuAdapter.readInstance(mockDevice, mockBuffer, { instanceIndex: 0 });
+  assert.equal(instData.byteLength, 80);
+  assert.equal(new Uint8Array(instData)[0], 42);
+
+  // 5. Test boundary check on readFromBuffer
+  await assert.rejects(
+    async () => {
+      await webgpuAdapter.readFromBuffer(mockDevice, mockBuffer, { offset: 1000, size: 100 });
+    },
+    (err) => err instanceof RangeError && err.message.includes("Buffer overflow")
+  );
+});
+
 test("DOMAdapter: batchApply matrix3d formatting & performance guardrail warning", () => {
   const elements = [];
   for (let i = 0; i < 205; i++) {
