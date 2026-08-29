@@ -6,6 +6,51 @@ import { spring, interpolate, interpolateColors, Sequence, Series, createRemotio
 import { OPFSStorage } from "../dist/opfs_storage.js";
 import { StorageAdapter } from "../dist/storage_adapter.js";
 
+test("JS Evaluator: Supports all 16 new Easing variants (Bounce, Elastic, Back, Expo, Sine, SpringEasing)", async () => {
+  const easings = [
+    Easing.BounceIn,
+    Easing.BounceOut,
+    Easing.BounceInOut,
+    Easing.ElasticIn,
+    Easing.ElasticOut,
+    Easing.ElasticInOut,
+    Easing.BackIn,
+    Easing.BackOut,
+    Easing.BackInOut,
+    Easing.ExpoIn,
+    Easing.ExpoOut,
+    Easing.ExpoInOut,
+    Easing.SineIn,
+    Easing.SineOut,
+    Easing.SineInOut,
+    Easing.SpringEasing,
+  ];
+
+  for (const easing of easings) {
+    const engine = new Engine();
+    const clip = new Clip(`test_${easing}`)
+      .duration(1000)
+      .addKeyframe(new Keyframe(0).easing(easing).transform(new TransformBuilder().translateX(0).build()))
+      .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+    engine.addClip(clip);
+    engine.addInstances([new Instance(`test_${easing}`, "i1")]);
+    engine.prepared = true;
+
+    const startVal = engine.getEvaluatedInstances(0, true)[0].transformMatrix[12];
+    const endVal = engine.getEvaluatedInstances(1000, true)[0].transformMatrix[12];
+    const midVal = engine.getEvaluatedInstances(500, true)[0].transformMatrix[12];
+
+    assert.ok(Math.abs(startVal - 0) < 1e-2, `Start failed for ${easing}`);
+    if (easing === Easing.SpringEasing) {
+      assert.ok(Number.isFinite(endVal), `End value not finite for ${easing}`);
+    } else {
+      assert.ok(Math.abs(endVal - 100) < 1e-2, `End failed for ${easing}`);
+    }
+    assert.ok(Number.isFinite(midVal), `Mid value not finite for ${easing}`);
+  }
+});
+
 test("Easing.CubicBezier defaults to standard EaseInOut curve (0.42, 0, 0.58, 1) when cubic_params is omitted", async () => {
   const engine = new Engine();
   const clip = new Clip("bezier_default")

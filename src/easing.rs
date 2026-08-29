@@ -33,6 +33,112 @@ pub fn solve_cubic_bezier(p1x: f64, p1y: f64, p2x: f64, p2y: f64, t: f64) -> f64
         + u * u * u
 }
 
+fn bounce_out(t: f64) -> f64 {
+    if t < 1.0 / 2.75 {
+        7.5625 * t * t
+    } else if t < 2.0 / 2.75 {
+        let t = t - 1.5 / 2.75;
+        7.5625 * t * t + 0.75
+    } else if t < 2.5 / 2.75 {
+        let t = t - 2.25 / 2.75;
+        7.5625 * t * t + 0.9375
+    } else {
+        let t = t - 2.625 / 2.75;
+        7.5625 * t * t + 0.984375
+    }
+}
+
+fn bounce_in(t: f64) -> f64 {
+    1.0 - bounce_out(1.0 - t)
+}
+
+fn bounce_in_out(t: f64) -> f64 {
+    if t < 0.5 {
+        (1.0 - bounce_out(1.0 - 2.0 * t)) / 2.0
+    } else {
+        (1.0 + bounce_out(2.0 * t - 1.0)) / 2.0
+    }
+}
+
+fn elastic_out(t: f64) -> f64 {
+    if t == 0.0 || t == 1.0 {
+        return t;
+    }
+    (2.0_f64.powf(-10.0 * t)) * ((t - 0.075) * (2.0 * std::f64::consts::PI) / 0.3).sin() + 1.0
+}
+
+fn elastic_in(t: f64) -> f64 {
+    if t == 0.0 || t == 1.0 {
+        return t;
+    }
+    -(2.0_f64.powf(10.0 * t - 10.0)) * ((t * 10.0 - 10.75) * (2.0 * std::f64::consts::PI) / 3.0).sin()
+}
+
+fn elastic_in_out(t: f64) -> f64 {
+    if t == 0.0 || t == 1.0 {
+        return t;
+    }
+    if t < 0.5 {
+        -0.5 * (2.0_f64.powf(20.0 * t - 10.0)) * (((20.0 * t - 11.125) * (2.0 * std::f64::consts::PI)) / 4.5).sin()
+    } else {
+        0.5 * (2.0_f64.powf(-20.0 * t + 10.0)) * (((20.0 * t - 11.125) * (2.0 * std::f64::consts::PI)) / 4.5).sin() + 1.0
+    }
+}
+
+const S: f64 = 1.70158;
+
+fn back_in(t: f64) -> f64 {
+    t * t * ((S + 1.0) * t - S)
+}
+
+fn back_out(t: f64) -> f64 {
+    let t = t - 1.0;
+    t * t * ((S + 1.0) * t + S) + 1.0
+}
+
+fn back_in_out(t: f64) -> f64 {
+    let s = S * 1.525;
+    if t < 0.5 {
+        let t = 2.0 * t;
+        (t * t * ((s + 1.0) * t - s)) / 2.0
+    } else {
+        let t = 2.0 * t - 2.0;
+        (t * t * ((s + 1.0) * t + s) + 2.0) / 2.0
+    }
+}
+
+fn expo_in(t: f64) -> f64 {
+    if t == 0.0 { 0.0 } else { 2.0_f64.powf(10.0 * t - 10.0) }
+}
+
+fn expo_out(t: f64) -> f64 {
+    if t == 1.0 { 1.0 } else { 1.0 - 2.0_f64.powf(-10.0 * t) }
+}
+
+fn expo_in_out(t: f64) -> f64 {
+    if t == 0.0 {
+        0.0
+    } else if t == 1.0 {
+        1.0
+    } else if t < 0.5 {
+        2.0_f64.powf(20.0 * t - 10.0) / 2.0
+    } else {
+        (2.0 - 2.0_f64.powf(-20.0 * t + 10.0)) / 2.0
+    }
+}
+
+fn sine_in(t: f64) -> f64 {
+    1.0 - ((t * std::f64::consts::PI) / 2.0).cos()
+}
+
+fn sine_out(t: f64) -> f64 {
+    ((t * std::f64::consts::PI) / 2.0).sin()
+}
+
+fn sine_in_out(t: f64) -> f64 {
+    -(((t * std::f64::consts::PI).cos()) - 1.0) / 2.0
+}
+
 pub fn evaluate_easing(easing: EasingType, cubic_params: Option<&CubicBezierParams>, t: f64) -> f64 {
     let clamped_t = t.clamp(0.0, 1.0);
     match easing {
@@ -56,6 +162,22 @@ pub fn evaluate_easing(easing: EasingType, cubic_params: Option<&CubicBezierPara
                 0.0
             }
         }
+        EasingType::BounceIn => bounce_in(clamped_t),
+        EasingType::BounceOut => bounce_out(clamped_t),
+        EasingType::BounceInOut => bounce_in_out(clamped_t),
+        EasingType::ElasticIn => elastic_in(clamped_t),
+        EasingType::ElasticOut => elastic_out(clamped_t),
+        EasingType::ElasticInOut => elastic_in_out(clamped_t),
+        EasingType::BackIn => back_in(clamped_t),
+        EasingType::BackOut => back_out(clamped_t),
+        EasingType::BackInOut => back_in_out(clamped_t),
+        EasingType::ExpoIn => expo_in(clamped_t),
+        EasingType::ExpoOut => expo_out(clamped_t),
+        EasingType::ExpoInOut => expo_in_out(clamped_t),
+        EasingType::SineIn => sine_in(clamped_t),
+        EasingType::SineOut => sine_out(clamped_t),
+        EasingType::SineInOut => sine_in_out(clamped_t),
+        EasingType::SpringEasing => solve_spring(clamped_t, 1.0, 0.5, 100.0, 1.0),
     }
 }
 

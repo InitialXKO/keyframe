@@ -6,6 +6,22 @@ export enum Easing {
   EaseInOut = "EaseInOut",
   CubicBezier = "CubicBezier",
   Step = "Step",
+  BounceIn = "BounceIn",
+  BounceOut = "BounceOut",
+  BounceInOut = "BounceInOut",
+  ElasticIn = "ElasticIn",
+  ElasticOut = "ElasticOut",
+  ElasticInOut = "ElasticInOut",
+  BackIn = "BackIn",
+  BackOut = "BackOut",
+  BackInOut = "BackInOut",
+  ExpoIn = "ExpoIn",
+  ExpoOut = "ExpoOut",
+  ExpoInOut = "ExpoInOut",
+  SineIn = "SineIn",
+  SineOut = "SineOut",
+  SineInOut = "SineInOut",
+  SpringEasing = "SpringEasing",
 }
 
 export enum BlendMode {
