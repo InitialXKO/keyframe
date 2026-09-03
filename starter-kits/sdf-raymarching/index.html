@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Keyframe Engine Starter Kit - SDF Raymarching & Keyframe Bridge</title>
+  <style>
+    body { margin: 0; background: #0f111a; color: #fff; font-family: system-ui, sans-serif; text-align: center; }
+    h1 { margin-top: 20px; font-size: 1.5rem; font-weight: 600; }
+    .controls { margin: 15px 0; display: flex; justify-content: center; gap: 10px; }
+    button { padding: 8px 16px; cursor: pointer; background: #1e2230; color: #61dafb; border: 1px solid #2d3446; border-radius: 6px; font-weight: 500; }
+    button:hover { background: #282e3f; }
+    #status { color: #8a99ad; font-size: 0.9rem; }
+    #sdf-canvas { width: 800px; height: 500px; border: 1px solid #2d3446; border-radius: 8px; margin-top: 10px; background: #000; }
+  </style>
+</head>
+<body>
+  <h1>SDF Raymarching & Keyframe Bridge Starter Kit</h1>
+  <div class="controls">
+    <button id="toggleBridge">Toggle Keyframe Bridge (Active)</button>
+    <button id="switchPreset">Switch Scene Preset</button>
+  </div>
+  <p id="status">Initializing SDF Raymarching Engine & Keyframe Bridge...</p>
+  <canvas id="sdf-canvas" width="800" height="500"></canvas>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
