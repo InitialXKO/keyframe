@@ -20,7 +20,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { useStudio, STAGE } from "@/store/studio";
 import { buildEngineFromScene, easedFraction, type Kf } from "@/lib/scene";
-import { Easing as EngineEasing } from "@/lib/keyframe/builder/types";
+import { Easing as EngineEasing } from "@/lib/keyframe";
 import { engineHost } from "@/lib/engine-host";
 
 const SAMPLES_PER_SEGMENT = 22;

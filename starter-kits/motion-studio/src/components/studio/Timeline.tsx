@@ -38,7 +38,7 @@ import { useStudio, kfKey } from "@/store/studio";
 import { engineHost } from "@/lib/engine-host";
 import { DEFAULT_EASING } from "@/store/studio";
 import { EASING_OPTIONS, segmentSpeeds, segsPeak, type Kf, type SegSpeed } from "@/lib/scene";
-import { Easing as EasingName } from "@/lib/keyframe/builder/types";
+import { Easing as EasingName } from "@/lib/keyframe";
 import { cn } from "@/lib/utils";
 import { SpeedGraph, SPEED_GRAPH_H } from "./SpeedGraph";
 import {

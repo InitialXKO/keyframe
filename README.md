@@ -306,7 +306,7 @@ npm test
 
 - **Chrome DevTools Extension**: 位于 `devtools/` 目录，包含 Panel 调试面板与后台 Message 监听服务，可实时观察时间轴、实例状态及帧率。
 - **Starter Kits**: 位于 `starter-kits/` 目录：
-  - `starter-kits/motion-studio`: KeyForge Motion Studio 可视化动画创作工作台、性能基准实验室与评估工具
+  - `starter-kits/motion-studio`: KeyForge Motion Studio 2D/3D 动画可视化创作工作台
   - `starter-kits/web-webgpu`: WebGPU 计算管线模版
   - `starter-kits/three-js`: Three.js 场景同步模版
   - `starter-kits/dom-css`: DOM/CSS3D 属性驱动模版

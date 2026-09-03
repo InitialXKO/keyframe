@@ -23,8 +23,8 @@ import {
   makeDemoScene,
   nextElId,
 } from "@/lib/scene";
-import type { Easing as EasingName } from "@/lib/keyframe/builder/types";
-import { Easing } from "@/lib/keyframe/builder/types";
+import type { Easing as EasingName } from "@/lib/keyframe";
+import { Easing } from "@/lib/keyframe";
 
 export interface Selection {
   elId: string;

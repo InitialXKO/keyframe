@@ -32,7 +32,7 @@ import {
   type EasingFavorite,
 } from "@/lib/easing-favorites";
 import { EasingCurve, controlsFor } from "./EasingCurve";
-import { Easing } from "@/lib/keyframe/builder/types";
+import { Easing } from "@/lib/keyframe";
 import { toast } from "sonner";
 
 export function Inspector() {

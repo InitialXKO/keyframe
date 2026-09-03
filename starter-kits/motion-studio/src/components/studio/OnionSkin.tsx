@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Layers } from "lucide-react";
 import { useStudio } from "@/store/studio";
 import { buildEngineFromScene, type SceneData } from "@/lib/scene";
-import type { Engine } from "@/lib/keyframe/builder/engine";
+import type { Engine } from "@/lib/keyframe";
 import { cn } from "@/lib/utils";
 
 const W = 960;

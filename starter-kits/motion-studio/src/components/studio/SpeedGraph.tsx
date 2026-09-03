@@ -41,7 +41,7 @@ import { PencilRuler, X } from "lucide-react";
 import { useStudio, kfKey } from "@/store/studio";
 import { engineHost } from "@/lib/engine-host";
 import { segmentSpeeds, segsPeak, EASING_OPTIONS, type SegSpeed } from "@/lib/scene";
-import { Easing as EasingName } from "@/lib/keyframe/builder/types";
+import { Easing as EasingName } from "@/lib/keyframe";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EasingCurve } from "./EasingCurve";
 

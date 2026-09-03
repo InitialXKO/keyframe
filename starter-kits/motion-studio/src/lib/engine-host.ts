@@ -10,9 +10,9 @@
  *  - Playback uses the engine's own AnimationPlayer (audio-clock-master capable).
  */
 
-import { Engine } from "@/lib/keyframe/builder/engine";
-import { AnimationPlayer } from "@/lib/keyframe/controller";
-import { domAdapter } from "@/lib/keyframe/dom_binder";
+import { Engine } from "@/lib/keyframe";
+import { AnimationPlayer } from "@/lib/keyframe";
+import { domAdapter } from "@/lib/keyframe";
 import { buildEngineFromScene, type SceneData } from "@/lib/scene";
 
 export interface DecomposedKf {

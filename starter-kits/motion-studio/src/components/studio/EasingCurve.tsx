@@ -13,8 +13,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { Easing as EasingName } from "@/lib/keyframe/builder/types";
-import { Easing } from "@/lib/keyframe/builder/types";
+import type { Easing as EasingName } from "@/lib/keyframe";
+import { Easing } from "@/lib/keyframe";
 import type { CubicControl } from "@/lib/scene";
 
 /** control points mirroring the engine's evaluateEasing defaults */

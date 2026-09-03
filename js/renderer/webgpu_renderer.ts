@@ -1,11 +1,6 @@
 import { Engine } from "../builder/engine.js";
 import { IRenderer } from "./renderer.js";
 
-declare global {
-  interface Navigator {
-    gpu: any;
-  }
-}
 
 type GPUAdapter = any;
 type GPUDevice = any;

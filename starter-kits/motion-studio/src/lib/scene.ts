@@ -14,7 +14,7 @@ import {
   TransformBuilder,
   Easing as EngineEasing,
 } from "./keyframe";
-import type { TransformData, Easing as EasingName } from "./keyframe/builder/types";
+import type { TransformData, Easing as EasingName, Easing } from "./keyframe/builder/types";
 
 // ---------------------------------------------------------------------------
 // Scene model

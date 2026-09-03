@@ -16,9 +16,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KeyForge Motion Studio — 浏览器动效设计工作台",
+  title: "KeyForge Motion Studio — 2D/3D 动画可视化设计工作台",
   description:
-    "基于 InitialXKO/keyframe 引擎（Rust × WASM × WebGPU 架构，纯 JS 回退运行时）驱动的浏览器端动效设计工作台：关键帧编辑、时间轴、批量实例性能实验室与战略评估。",
+    "基于 Keyframe Engine (Rust WASM + 80B Zero-Copy ABI) 驱动的 2D/3D 关键帧动效设计工作台 Starter Kit。",
   keywords: ["keyframe", "动效", "动画编辑器", "Motion Design", "WASM", "Remotion", "KeyForge"],
   authors: [{ name: "KeyForge Motion Studio" }],
   icons: {
