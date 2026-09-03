@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Keyframe Engine × SDF Raymarching Example</title>
+  <style>
+    body { margin: 0; background: #0b0d14; color: #e1e7ed; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    h1 { margin-top: 24px; font-size: 1.6rem; color: #38bdf8; }
+    p { margin: 6px 0 16px 0; color: #94a3b8; font-size: 0.95rem; }
+    #canvas-container { position: relative; width: 800px; height: 500px; border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+    canvas { width: 100%; height: 100%; display: block; }
+    .badge { position: absolute; top: 12px; left: 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid #334155; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; color: #38bdf8; font-weight: 600; }
+    .info-panel { margin-top: 16px; width: 800px; background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 12px 16px; font-size: 0.85rem; color: #cbd5e1; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <h1>SDF Raymarching & CSG Primitive Animation</h1>
+  <p>Real-time CSG Raymarching driven by @keyframe/core zero-copy animation matrix evaluation.</p>
+
+  <div id="canvas-container">
+    <div class="badge" id="backendBadge">WebGL2 SDF Raymarching</div>
+    <canvas id="sdfCanvas" width="800" height="500"></canvas>
+  </div>
+
+  <div class="info-panel" id="infoPanel">
+    Click on the canvas to inspect SDF primitive material labels and raymarch intersection distance.
+  </div>
+
+  <script type="module">
+    import { Engine, Clip, Instance, Keyframe, TransformBuilder } from '../../dist/index.js';
+    import { SdfEngine, PRESETS } from '../../dist/sdf/index.js';
+
+    async function runSdfExample() {
+      const canvas = document.getElementById('sdfCanvas');
+      const infoPanel = document.getElementById('infoPanel');
+
+      const sdfEngine = new SdfEngine(canvas);
+      sdfEngine.loadScene(PRESETS[0]);
+
+      const kfEngine = new Engine();
+      const clip = new Clip('crank_rotation')
+        .duration(3000)
+        .iterations(Infinity)
+        .addKeyframe(new Keyframe(0).transform(new TransformBuilder().rotateZ(0).build()))
+        .addKeyframe(new Keyframe(3000).transform(new TransformBuilder().rotateZ(360).build()));
+
+      kfEngine.addClip(clip);
+      kfEngine.addInstances([new Instance('crank_rotation', 'inst_7').delay(0)]);
+      await kfEngine.prepare();
+
+      await sdfEngine.setKeyframeConfig({
+        engine: kfEngine,
+        enabled: true,
+        timeScale: 1.0,
+      });
+
+      sdfEngine.start();
+
+      canvas.addEventListener('click', async (e) => {
+        const pick = await sdfEngine.pickAt(e.clientX, e.clientY);
+        if (pick && pick.hit) {
+          infoPanel.innerText = `Hit Primitive Material: ${pick.labelNameA} | Intersection Point: (${pick.point.map(n => n.toFixed(3)).join(', ')}) | Intersection Distance: ${pick.tCam.toFixed(3)}`;
+        } else {
+          infoPanel.innerText = 'Missed SDF geometry.';
+        }
+      });
+    }
+
+    runSdfExample();
+  </script>
+</body>
+</html>
