@@ -1,5 +1,35 @@
 use crate::types::GpuInstanceData;
 
+#[cfg(test)]
+mod tests {
+    use crate::types::GpuInstanceData;
+    use std::mem::{align_of, size_of};
+
+    #[test]
+    fn test_gpu_instance_layout_assertions() {
+        assert_eq!(size_of::<GpuInstanceData>(), 80, "GpuInstanceData size must be exactly 80 bytes");
+        assert_eq!(align_of::<GpuInstanceData>(), 16, "GpuInstanceData alignment must be 16 bytes");
+
+        let inst = GpuInstanceData {
+            transform_matrix: [0.0; 16],
+            opacity: 1.0,
+            visible: 1,
+            clip_index: 0,
+            _padding: 0,
+        };
+        let base_ptr = &inst as *const _ as usize;
+        let opacity_ptr = &inst.opacity as *const _ as usize;
+        let visible_ptr = &inst.visible as *const _ as usize;
+        let clip_index_ptr = &inst.clip_index as *const _ as usize;
+        let padding_ptr = &inst._padding as *const _ as usize;
+
+        assert_eq!(opacity_ptr - base_ptr, 64, "transform_matrix offset must be 64 bytes");
+        assert_eq!(visible_ptr - base_ptr, 68, "visible offset must be 68 bytes");
+        assert_eq!(clip_index_ptr - base_ptr, 72, "clip_index offset must be 72 bytes");
+        assert_eq!(padding_ptr - base_ptr, 76, "_padding offset must be 76 bytes");
+    }
+}
+
 pub fn verify_cpu_gpu_matrices(
     cpu_output: &[GpuInstanceData],
     gpu_output: &[GpuInstanceData],

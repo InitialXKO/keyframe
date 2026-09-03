@@ -492,6 +492,50 @@ test("Engine zero-copy ABI: evaluateFrame() returns raw WASM memory view and get
   assert.equal(instances[1].transformMatrix.length, 16);
 });
 
+test("JS Evaluator Zero-Allocation Heap Growth Test: getEvaluatedInstances and evaluateFrame reuse buffer", async () => {
+  const engine = new Engine();
+  const clip = new Clip("c1")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+  engine.addClip(clip);
+  const instances = [];
+  for (let i = 0; i < 100; i++) {
+    instances.push(new Instance("c1", `inst_${i}`));
+  }
+  engine.addInstances(instances);
+  engine.prepared = true;
+
+  // Warm up engine and trigger garbage collection if supported
+  engine.evaluateFrame(0);
+  if (globalThis.gc) {
+    globalThis.gc();
+  }
+
+  const initialMemory = process.memoryUsage().heapUsed;
+
+  // Evaluate 10,000 frames sequentially
+  for (let f = 0; f < 10000; f++) {
+    const timeMs = (f * 16.66) % 1000;
+    const evalFrame = engine.evaluateFrame(timeMs);
+    assert.equal(evalFrame.count, 100);
+
+    const insts = engine.getEvaluatedInstances(timeMs, true);
+    assert.equal(insts.length, 100);
+  }
+
+  if (globalThis.gc) {
+    globalThis.gc();
+  }
+
+  const finalMemory = process.memoryUsage().heapUsed;
+  const growthBytes = finalMemory - initialMemory;
+
+  // Heap growth over 10,000 evaluations should be negligible (< 1MB overhead for test runner)
+  assert.ok(growthBytes < 1024 * 1024, `Heap growth too large: ${growthBytes} bytes`);
+});
+
 test("Engine zero-copy ABI: JS fallback mode packs instances in contiguous buffer view", async () => {
   const engine = new Engine();
   const clip = new Clip("c1").duration(1000);

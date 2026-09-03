@@ -155,6 +155,61 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_wasm_memory_growth_dynamic_instances() {
+        let mut engine = EngineState::new();
+        let clip_data = AnimationClipData {
+            id: "dynamic_clip".to_string(),
+            duration: 1000.0,
+            iterations: 1.0,
+            keyframes: vec![
+                KeyframeData {
+                    time: 0.0,
+                    transform: TransformData::default(),
+                    opacity: 1.0,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+                KeyframeData {
+                    time: 1000.0,
+                    transform: TransformData {
+                        translation: [10.0, 20.0, 30.0],
+                        ..Default::default()
+                    },
+                    opacity: 1.0,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+            ],
+            metadata: None,
+        };
+        engine.add_clip(clip_data).unwrap();
+
+        // Dynamically add instances in iterations and verify buffer pointers remain valid
+        for i in 0..2000 {
+            let inst_data = InstanceData {
+                id: format!("dyn_inst_{}", i),
+                clip_id: "dynamic_clip".to_string(),
+                opacity: 1.0,
+                visible: true,
+                delay: 0.0,
+                duration_scale: 1.0,
+                time_remapping_speed: 1.0,
+                blend_mode: BlendMode::Override,
+                initial_transform: TransformData::default(),
+            };
+            engine.add_instance(inst_data).unwrap();
+
+            if i % 200 == 0 {
+                let evaluated = engine.evaluate_frame(500.0);
+                assert_eq!(evaluated.len(), i + 1);
+                assert_eq!(engine.get_instance_buffer_byte_length(), (i + 1) * 80);
+                let ptr = engine.get_instance_buffer_ptr();
+                assert!(!ptr.is_null());
+            }
+        }
+    }
+
+    #[test]
     fn test_additive_and_time_remapping() {
         let mut engine = EngineState::new();
         let clip_data = AnimationClipData {
