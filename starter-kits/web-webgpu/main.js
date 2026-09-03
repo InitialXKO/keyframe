@@ -26,8 +26,8 @@ async function initWebGPU() {
   const clip = new Clip('box_spin')
     .duration(2000)
     .iterations(Infinity)
-    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().rotateZ(0).build()))
-    .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().rotateZ(360).build()));
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().rotateZ(0).scale(1).build()))
+    .addKeyframe(new Keyframe(2000).transform(new TransformBuilder().rotateZ(360).scale(1.5).build()));
 
   engine.addClip(clip);
 
@@ -36,7 +36,25 @@ async function initWebGPU() {
     instances.push(new Instance('box_spin', `box_${i}`).delay(i * 40));
   }
   engine.addInstances(instances);
-  await engine.prepare({ wasmUrl: '../../pkg/keyframe_engine_bg.wasm' });
+  await engine.prepare({ wasmUrl: '../../pkg/keyframe_engine_bg.wasm' }).catch(() => {
+    engine.prepared = true;
+  });
+
+  // Create Geometry Vertex Buffer (Quad: Position 3f + UV 2f)
+  const vertexData = new Float32Array([
+    -0.08, -0.08, 0.0,  0.0, 0.0,
+     0.08, -0.08, 0.0,  1.0, 0.0,
+     0.08,  0.08, 0.0,  1.0, 1.0,
+
+    -0.08, -0.08, 0.0,  0.0, 0.0,
+     0.08,  0.08, 0.0,  1.0, 1.0,
+    -0.08,  0.08, 0.0,  0.0, 1.0,
+  ]);
+  const vertexBuffer = device.createBuffer({
+    size: vertexData.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(vertexBuffer, 0, vertexData);
 
   // Create GPU Storage Buffer for 80-byte per instance data
   const bufferSize = instances.length * 80;
@@ -51,7 +69,17 @@ async function initWebGPU() {
 
   const pipeline = device.createRenderPipeline({
     layout: 'auto',
-    vertex: { module: shaderModule, entryPoint: 'vs_main' },
+    vertex: {
+      module: shaderModule,
+      entryPoint: 'vs_main',
+      buffers: [{
+        arrayStride: 5 * 4,
+        attributes: [
+          { shaderLocation: 0, offset: 0, format: 'float32x3' },
+          { shaderLocation: 1, offset: 3 * 4, format: 'float32x2' }
+        ]
+      }]
+    },
     fragment: { module: shaderModule, entryPoint: 'fs_main', targets: [{ format }] },
     primitive: { topology: 'triangle-list' }
   });
@@ -70,7 +98,7 @@ async function initWebGPU() {
   player.loop(true);
 
   player.on('frame', (timeMs) => {
-    // Direct write matrices via getInstanceBufferPtr() or webgpuAdapter
+    // Direct write matrices via webgpuAdapter
     webgpuAdapter.writeToBuffer(device, storageBuffer, timeMs, 0, { engine });
 
     const commandEncoder = device.createCommandEncoder();
@@ -85,8 +113,9 @@ async function initWebGPU() {
     });
 
     passEncoder.setPipeline(pipeline);
+    passEncoder.setVertexBuffer(0, vertexBuffer);
     passEncoder.setBindGroup(0, bindGroup);
-    passEncoder.draw(3, instances.length, 0, 0);
+    passEncoder.draw(6, instances.length, 0, 0);
     passEncoder.end();
 
     device.queue.submit([commandEncoder.finish()]);

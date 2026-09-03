@@ -18,4 +18,5 @@ export * from "./dom_binder.js";
 export * from "./controller.js";
 export * from "./math/hierarchy.js";
 export * from "./decision_tree.js";
+export * from "./validator.js";
 export * from "./generated/shaders.js";
