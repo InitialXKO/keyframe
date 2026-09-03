@@ -2,105 +2,162 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Keyframe Engine Starter Kit - img2SDF Procedural Reconstruction</title>
+  <title>img2SDF Starter Kit - vinhhien112/img2obj Procedural SDF Raymarching</title>
   <style>
     body {
       margin: 0;
-      background: #0f111a;
-      color: #f1f5f9;
-      font-family: system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #f0f6fc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       text-align: center;
     }
-    h1 { margin-top: 16px; font-size: 1.6rem; font-weight: 700; color: #38bdf8; }
-    p.subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 12px; }
-    .container {
+    header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #30363d;
+      background: #161b22;
+    }
+    h1 { margin: 0; font-size: 1.4rem; color: #58a6ff; font-weight: 700; }
+    p.subtitle { margin: 4px 0 0; color: #8b949e; font-size: 0.85rem; }
+
+    .workspace {
       display: flex;
       flex-wrap: wrap;
+      gap: 16px;
+      max-width: 1200px;
+      margin: 16px auto;
+      padding: 0 16px;
       justify-content: center;
-      gap: 20px;
-      max-w: 1000px;
-      margin: 0 auto;
-      padding: 0 10px;
     }
+
     .panel {
-      background: #1e2230;
-      border: 1px solid #2d3446;
+      background: #161b22;
+      border: 1px solid #30363d;
       border-radius: 8px;
       padding: 16px;
       text-align: left;
     }
-    .controls-panel { width: 320px; }
-    .viewport-panel { flex: 1; min-width: 480px; }
+    .panel-spec { width: 380px; }
+    .panel-viewport { flex: 1; min-width: 480px; }
+
+    .phase-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: #1f6feb22;
+      color: #58a6ff;
+      border: 1px solid #1f6feb;
+      margin-bottom: 8px;
+    }
+
     .dropzone {
-      border: 2px dashed #38bdf8;
+      border: 2px dashed #30363d;
       border-radius: 6px;
-      padding: 20px;
+      padding: 14px;
       text-align: center;
       cursor: pointer;
-      background: #141824;
-      transition: background 0.2s;
-    }
-    .dropzone:hover { background: #1a2032; }
-    .dropzone img { max-width: 100%; max-height: 120px; margin-top: 10px; border-radius: 4px; display: none; }
-    .preset-btns { display: flex; gap: 8px; margin: 10px 0; }
-    button {
-      flex: 1;
-      padding: 8px 12px;
-      cursor: pointer;
-      background: #282e3f;
-      color: #38bdf8;
-      border: 1px solid #3b82f6;
-      border-radius: 6px;
-      font-weight: 600;
+      background: #0d1117;
       transition: all 0.2s;
     }
-    button:hover { background: #3b82f6; color: #fff; }
-    .slider-group { margin-top: 12px; }
-    .slider-group label { display: flex; justify-content: space-between; font-size: 0.85rem; color: #cbd5e1; }
+    .dropzone:hover { border-color: #58a6ff; background: #161b22; }
+    .dropzone img { max-width: 100%; max-height: 90px; margin-top: 8px; border-radius: 4px; display: none; }
+
+    .preset-btns { display: flex; gap: 6px; margin: 8px 0; }
+    button {
+      flex: 1;
+      padding: 6px 10px;
+      cursor: pointer;
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    button:hover { background: #30363d; color: #58a6ff; }
+    button.primary { background: #238636; color: #fff; border-color: #2ea043; }
+    button.primary:hover { background: #2ea043; }
+
+    textarea {
+      width: 100%;
+      height: 160px;
+      background: #0d1117;
+      color: #79c0ff;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      padding: 8px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    .slider-group { margin-top: 10px; }
+    .slider-group label { display: flex; justify-content: space-between; font-size: 0.8rem; color: #8b949e; }
     .slider-group input { width: 100%; margin-top: 4px; }
-    #sdf-canvas { width: 100%; height: 420px; border-radius: 6px; background: #000; display: block; }
-    #status { font-size: 0.85rem; color: #38bdf8; margin-top: 8px; font-mono: true; }
+
+    #sdf-canvas { width: 100%; height: 440px; border-radius: 6px; background: #000; display: block; }
+
+    .status-bar {
+      margin-top: 10px;
+      padding: 8px;
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #58a6ff;
+    }
   </style>
 </head>
 <body>
-  <h1>img2SDF Procedural CSG Reconstruction</h1>
-  <p class="subtitle">Convert reference images/silhouettes into smooth SDF distance fields with Keyframe Engine motion</p>
+  <header>
+    <h1>img2SDF Starter Kit — vinhhien112/img2obj Spec-Guided Raymarching</h1>
+    <p class="subtitle">Reference Image → ObjectSculptSpec → Procedural CSG Primitives → Keyframe Motion Bridge</p>
+  </header>
 
-  <div class="container">
-    <div class="panel controls-panel">
-      <h3>1. Reference Image</h3>
+  <div class="workspace">
+    <!-- Left Panel: img2obj 4-Phase Workflow & ObjectSculptSpec Editor -->
+    <div class="panel panel-spec">
+      <div class="phase-badge">Phase 1 & 2: Validate Reference & Build ObjectSculptSpec</div>
+
       <div id="dropzone" class="dropzone">
-        <span id="drop-text">Click or Drop Image Here</span>
+        <span id="drop-text">Attach Reference Image / Screenshot</span>
         <img id="preview-img" alt="Reference Preview" />
         <input type="file" id="file-input" accept="image/*" style="display: none;" />
       </div>
 
-      <h4>Sample Targets</h4>
       <div class="preset-btns">
-        <button id="preset-tree">Autumn Tree</button>
-        <button id="preset-ship">Tower Ship</button>
-        <button id="preset-piston">Piston</button>
+        <button id="preset-tree">Ancient Tree Spec</button>
+        <button id="preset-ship">Tower Ship Spec</button>
+        <button id="preset-piston">Piston Spec</button>
       </div>
 
-      <h3>2. SDF Parameters</h3>
+      <div class="phase-badge" style="margin-top: 12px;">ObjectSculptSpec (JSON Contract)</div>
+      <textarea id="spec-json" spellcheck="false"></textarea>
+
+      <div style="display: flex; gap: 8px; margin-top: 8px;">
+        <button id="btn-recompile" class="primary">Recompile CSG Primitives</button>
+      </div>
+
+      <div class="phase-badge" style="margin-top: 12px;">Phase 3: Smooth CSG Blend & Lookdev</div>
       <div class="slider-group">
-        <label>Smooth Blending (k) <span id="val-smooth">0.25</span></label>
+        <label>Smooth CSG Blend (k) <span id="val-smooth">0.25</span></label>
         <input type="range" id="slider-smooth" min="0.0" max="0.8" step="0.01" value="0.25" />
       </div>
-      <div class="slider-group">
-        <label>Detail Resolution <span id="val-res">High</span></label>
-        <input type="range" id="slider-res" min="1" max="3" step="1" value="3" />
-      </div>
 
-      <div style="margin-top: 16px;">
-        <button id="btn-toggle-anim" style="width: 100%;">Toggle Animation Bridge (Active)</button>
+      <div style="margin-top: 12px;">
+        <button id="btn-toggle-anim">Toggle Keyframe Bridge (Active)</button>
       </div>
     </div>
 
-    <div class="panel viewport-panel">
-      <h3>3. Raymarched SDF Viewport</h3>
-      <canvas id="sdf-canvas" width="640" height="420"></canvas>
-      <div id="status">Initializing img2SDF Pipeline...</div>
+    <!-- Right Panel: Raymarched SDF Viewport & Phase 4 Visual Review -->
+    <div class="panel panel-viewport">
+      <div class="phase-badge">Phase 4: Raymarched Viewport & Motion Bridge</div>
+      <canvas id="sdf-canvas" width="640" height="440"></canvas>
+      <div id="status" class="status-bar">Initializing img2SDF Pipeline...</div>
     </div>
   </div>
 
