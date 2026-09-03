@@ -5,8 +5,46 @@
 
 export class Img2ObjEngine {
   /**
-   * Phase 1 & 2: Analyzes image, extracts evidence (palette, silhouette ratio)
-   * and produces a structured ObjectSculptSpec matching vinhhien112/img2obj
+   * System Prompt contract from vinhhien112/img2obj (skills/object-to-threejs-procedural/SKILL.md)
+   * Used for AI Vision / Multimodal LLMs (OpenAI Vision, Claude 3.5 Sonnet, Codex) to synthesize
+   * ObjectSculptSpec JSON directly from image attachments.
+   */
+  static getAiVisionSystemPrompt() {
+    return `You are an AI 3D Sculptor following the vinhhien112/img2obj ObjectSculptSpec contract.
+Analyze the attached reference image and produce a valid ObjectSculptSpec JSON containing:
+1. Component hierarchy and primitive shapes ("sdSphere", "sdBox", "sdCylinder", "sdCapsule", "sdTorus").
+2. Smooth CSG operations ("union", "smoothUnion", "subtraction", "intersection") with blending smoothness 'k' (0.05..0.5).
+3. PBR materials (RGB base color [0..1], roughness [0..1], metalness [0..1]).
+4. Motion pivots ("inst_7", "inst_14") mapping animated parts to Keyframe Engine instances.
+
+Format output as strict ObjectSculptSpec JSON:
+{
+  "name": "Object Name",
+  "author": "AI Vision Sculptor",
+  "version": "1.0",
+  "phase": "lookdev",
+  "primitives": [
+    {
+      "id": "part_id",
+      "type": "sdBox",
+      "params": [0.5, 0.5, 0.5, 0.05],
+      "transform": [0, 0, 0],
+      "color": [0.8, 0.2, 0.2],
+      "roughness": 0.3,
+      "metalness": 0.1,
+      "operation": "smoothUnion",
+      "smoothness": 0.2
+    }
+  ],
+  "pivots": [
+    { "id": "inst_7", "target": "part_id", "motion": "sway" }
+  ]
+}`;
+  }
+
+  /**
+   * Phase 1 & 2: Client-side Image Analysis & Heuristics Fallback Engine
+   * Extract image silhouette bounds, aspect ratio, edge energy, and dominant colors
    */
   static generateSpecFromImage(imgElement, label = "Reference Object") {
     const canvas = document.createElement("canvas");
@@ -21,12 +59,23 @@ export class Img2ObjEngine {
     const imgData = ctx.getImageData(0, 0, 64, 64).data;
 
     let r = 0, g = 0, b = 0, pixels = 0;
-    for (let i = 0; i < imgData.length; i += 16) {
-      if (imgData[i + 3] > 30) {
-        r += imgData[i];
-        g += imgData[i + 1];
-        b += imgData[i + 2];
-        pixels++;
+    let minX = 64, maxX = 0, minY = 64, maxY = 0;
+
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const idx = (y * 64 + x) * 4;
+        const alpha = imgData[idx + 3];
+        if (alpha > 30) {
+          r += imgData[idx];
+          g += imgData[idx + 1];
+          b += imgData[idx + 2];
+          pixels++;
+
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
       }
     }
 
@@ -37,34 +86,72 @@ export class Img2ObjEngine {
       Math.round((b / count) / 255 * 100) / 100,
     ];
 
+    const bboxWidth = Math.max(1, maxX - minX);
+    const bboxHeight = Math.max(1, maxY - minY);
+    const aspectRatio = bboxWidth / bboxHeight;
+
+    // Adapt CSG primitives based on silhouette aspect ratio heuristics
+    let basePrimitive;
+    let topPrimitive;
+
+    if (aspectRatio > 1.3) {
+      // Wide silhouette (e.g. ship, vehicle, horizontal prop)
+      basePrimitive = {
+        id: "hull_base",
+        type: "sdBox",
+        params: [Math.min(1.2, aspectRatio * 0.5), 0.3, 0.4, 0.1],
+        transform: [0, -0.4, 0],
+        color: [dominantColor[0] * 0.7, dominantColor[1] * 0.7, dominantColor[2] * 0.7],
+        roughness: 0.4,
+        metalness: 0.5,
+        operation: "union",
+        smoothness: 0.2,
+      };
+      topPrimitive = {
+        id: "tower_cabin",
+        type: "sdCylinder",
+        params: [0.4, 0.5, 0, 0],
+        transform: [0, 0.2, 0],
+        color: dominantColor,
+        roughness: 0.3,
+        metalness: 0.2,
+        operation: "smoothUnion",
+        smoothness: 0.25,
+      };
+    } else {
+      // Tall / organic silhouette (e.g. tree, tower, person)
+      basePrimitive = {
+        id: "base_stem",
+        type: "sdCylinder",
+        params: [0.35, 1.0, 0, 0],
+        transform: [0, -0.5, 0],
+        color: [dominantColor[0] * 0.6, dominantColor[1] * 0.6, dominantColor[2] * 0.6],
+        roughness: 0.8,
+        metalness: 0.1,
+        operation: "union",
+        smoothness: 0.2,
+      };
+      topPrimitive = {
+        id: "main_crown",
+        type: "sdSphere",
+        params: [0.85, 0, 0, 0],
+        transform: [0, 0.4, 0],
+        color: dominantColor,
+        roughness: 0.35,
+        metalness: 0.15,
+        operation: "smoothUnion",
+        smoothness: 0.3,
+      };
+    }
+
     return {
       name: `Procedural Reconstructed ${label}`,
       author: "vinhhien112/img2obj engine",
       version: "1.0",
       phase: "lookdev",
       primitives: [
-        {
-          id: "base_stem",
-          type: "sdCylinder",
-          params: [0.35, 1.0, 0, 0],
-          transform: [0, -0.5, 0],
-          color: [dominantColor[0] * 0.6, dominantColor[1] * 0.6, dominantColor[2] * 0.6],
-          roughness: 0.8,
-          metalness: 0.1,
-          operation: "union",
-          smoothness: 0.2,
-        },
-        {
-          id: "main_body",
-          type: "sdSphere",
-          params: [0.85, 0, 0, 0],
-          transform: [0, 0.4, 0],
-          color: dominantColor,
-          roughness: 0.35,
-          metalness: 0.15,
-          operation: "smoothUnion",
-          smoothness: 0.3,
-        },
+        basePrimitive,
+        topPrimitive,
         {
           id: "orbital_ring",
           type: "sdTorus",
@@ -78,7 +165,7 @@ export class Img2ObjEngine {
         },
       ],
       pivots: [
-        { id: "inst_7", target: "main_body", motion: "sway" },
+        { id: "inst_7", target: topPrimitive.id, motion: "sway" },
         { id: "inst_14", target: "orbital_ring", motion: "spin" },
       ],
     };
