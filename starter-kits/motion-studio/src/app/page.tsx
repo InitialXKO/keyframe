@@ -8,34 +8,15 @@
  */
 
 import { useState } from "react";
-import { Atom, Clapperboard, Compass, Gauge, Mountain } from "lucide-react";
+import { Clapperboard, Compass, Gauge } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { StudioWorkspace } from "@/components/studio/StudioWorkspace";
 import { PerfLab } from "@/components/studio/PerfLab";
 import { ReportTab } from "@/components/studio/ReportTab";
-import dynamicImport from "next/dynamic";
-
-const MassVizApp = dynamicImport(
-  () => import("@/components/massviz/MassVizApp").then((m) => m.MassVizApp),
-  { ssr: false, loading: () => (
-    <div className="flex h-64 items-center justify-center text-sm text-zinc-500">
-      加载大规模可视化引擎…
-    </div>
-  ) },
-);
-
-const TerrainApp = dynamicImport(
-  () => import("@/components/terrain/TerrainApp").then((m) => m.TerrainApp),
-  { ssr: false, loading: () => (
-    <div className="flex h-64 items-center justify-center text-sm text-zinc-500">
-      加载地形引擎…
-    </div>
-  ) },
-);
 
 export default function Home() {
-  const [tab, setTab] = useState("massviz");
+  const [tab, setTab] = useState("studio");
 
   return (
     <div className="dark flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
@@ -51,11 +32,11 @@ export default function Home() {
             <h1 className="flex items-center gap-2 truncate text-base font-bold leading-tight">
               KeyForge Motion Studio
               <Badge className="hidden border-amber-500/30 bg-amber-500/10 text-[9px] font-semibold text-amber-400 sm:inline-flex" variant="outline">
-                v13
+                Starter Kit
               </Badge>
             </h1>
             <p className="truncate text-[11px] text-zinc-500">
-              Rust×WASM 关键帧内核驱动的动效工作台与大规模可视化动效层
+              Rust×WASM 关键帧内核驱动的 2D/3D 动效可视化设计工作台
             </p>
           </div>
           <div className="ml-auto hidden items-center gap-1.5 sm:flex">
@@ -72,13 +53,7 @@ export default function Home() {
       {/* main */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-4">
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="mb-3 grid w-full max-w-2xl grid-cols-3 bg-zinc-900 sm:grid-cols-5">
-            <TabsTrigger value="massviz" className="gap-1.5 text-xs" data-testid="tab-massviz">
-              <Atom className="h-3.5 w-3.5" /> 粒子引擎
-            </TabsTrigger>
-            <TabsTrigger value="terrain" className="gap-1.5 text-xs" data-testid="tab-terrain">
-              <Mountain className="h-3.5 w-3.5" /> 地形引擎
-            </TabsTrigger>
+          <TabsList className="mb-3 grid w-full max-w-xl grid-cols-3 bg-zinc-900">
             <TabsTrigger value="studio" className="gap-1.5 text-xs" data-testid="tab-studio">
               <Clapperboard className="h-3.5 w-3.5" /> 工作台
             </TabsTrigger>
@@ -86,17 +61,9 @@ export default function Home() {
               <Gauge className="h-3.5 w-3.5" /> 性能实验室
             </TabsTrigger>
             <TabsTrigger value="report" className="gap-1.5 text-xs" data-testid="tab-report">
-              <Compass className="h-3.5 w-3.5" /> 战略评估
+              <Compass className="h-3.5 w-3.5" /> 评估报告
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="massviz" className="mt-0">
-            <MassVizApp />
-          </TabsContent>
-
-          <TabsContent value="terrain" className="mt-0">
-            <TerrainApp />
-          </TabsContent>
 
           <TabsContent value="studio" className="mt-0">
             <StudioWorkspace />
