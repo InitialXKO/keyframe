@@ -3,7 +3,7 @@ import { IRenderer } from "./renderer.js";
 
 declare global {
   interface Navigator {
-    gpu?: any;
+    gpu: any;
   }
 }
 

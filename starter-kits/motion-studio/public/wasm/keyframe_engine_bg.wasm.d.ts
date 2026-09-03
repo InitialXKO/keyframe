@@ -1,0 +1,33 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_keyframeengine_free: (a: number, b: number) => void;
+export const kernel_build_info: () => [number, number];
+export const keyframeengine_add_clip_json: (a: number, b: number, c: number) => [number, number];
+export const keyframeengine_add_instance_json: (a: number, b: number, c: number) => [number, number];
+export const keyframeengine_bake_chunk: (a: number, b: number, c: number, d: number) => [number, number];
+export const keyframeengine_evaluate_frame: (a: number, b: number) => number;
+export const keyframeengine_evaluate_frame_fast: (a: number, b: number) => number;
+export const keyframeengine_export_ir_json: (a: number) => [number, number, number, number];
+export const keyframeengine_fast_buffer_byte_length: (a: number) => number;
+export const keyframeengine_fast_buffer_ptr: (a: number) => number;
+export const keyframeengine_get_instance_buffer_byte_length: (a: number) => number;
+export const keyframeengine_get_instance_buffer_ptr: (a: number) => number;
+export const keyframeengine_import_ir_json: (a: number, b: number, c: number) => [number, number];
+export const keyframeengine_instance_size: (a: number) => number;
+export const keyframeengine_interpolate: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+export const keyframeengine_interpolate_extrapolate: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
+export const keyframeengine_interpolate_opts: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+export const keyframeengine_interpolate_path_3d: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number];
+export const keyframeengine_new: () => number;
+export const keyframeengine_prepare: (a: number) => [number, number];
+export const keyframeengine_prepare_fast: (a: number) => void;
+export const keyframeengine_set_root_timeline_json: (a: number, b: number, c: number) => [number, number];
+export const keyframeengine_spring_solver: (a: number, b: number, c: number, d: number, e: number) => number;
+export const keyframeengine_bake_range: (a: number, b: number, c: number, d: number) => [number, number];
+export const __wbindgen_export_0: WebAssembly.Table;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __externref_table_dealloc: (a: number) => void;
+export const __wbindgen_start: () => void;

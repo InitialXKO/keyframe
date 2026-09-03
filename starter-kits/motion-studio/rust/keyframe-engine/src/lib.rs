@@ -1,0 +1,266 @@
+pub mod clip;
+pub mod easing;
+pub mod engine;
+pub mod fast;
+pub mod gpu_exporter;
+pub mod instance;
+pub mod interpolator;
+pub mod storage;
+pub mod timeline;
+pub mod transform;
+pub mod types;
+pub mod validator;
+pub mod verify;
+
+use engine::EngineState;
+use serde_json;
+use types::{AnimationClipData, EngineIR, InstanceData, TimelineNode};
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub struct KeyframeEngine {
+    inner: EngineState,
+    fast: Option<fast::FastState>,
+}
+
+#[wasm_bindgen]
+impl KeyframeEngine {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            inner: EngineState::new(),
+            fast: None,
+        }
+    }
+
+    pub fn spring_solver(&self, frame: f64, fps: f64, damping: f64, stiffness: f64) -> f64 {
+        easing::solve_spring(frame, fps, damping, stiffness, 1.0)
+    }
+
+    pub fn interpolate(&self, value: f64, input_range: &[f64], output_range: &[f64]) -> f64 {
+        self.interpolate_extrapolate(value, input_range, output_range, "extend", "extend")
+    }
+
+    pub fn interpolate_extrapolate(
+        &self,
+        value: f64,
+        input_range: &[f64],
+        output_range: &[f64],
+        extrapolate_left: &str,
+        extrapolate_right: &str,
+    ) -> f64 {
+        if input_range.is_empty() || output_range.is_empty() {
+            return value;
+        }
+        if input_range.len() != output_range.len() {
+            return value;
+        }
+
+        if value <= input_range[0] {
+            if extrapolate_left == "clamp" {
+                return output_range[0];
+            }
+            if extrapolate_left == "identity" {
+                return value;
+            }
+        }
+
+        let last_idx = input_range.len() - 1;
+        if value >= input_range[last_idx] {
+            if extrapolate_right == "clamp" {
+                return output_range[last_idx];
+            }
+            if extrapolate_right == "identity" {
+                return value;
+            }
+        }
+
+        for i in 0..last_idx {
+            if value >= input_range[i] && value <= input_range[i + 1] {
+                let in_len = input_range[i + 1] - input_range[i];
+                if in_len.abs() < 1e-7 {
+                    return output_range[i];
+                }
+                let t = (value - input_range[i]) / in_len;
+                return output_range[i] + t * (output_range[i + 1] - output_range[i]);
+            }
+        }
+
+        if value < input_range[0] {
+            let in_len = input_range[1] - input_range[0];
+            if in_len.abs() < 1e-7 {
+                return output_range[0];
+            }
+            let linear_t = (value - input_range[0]) / in_len;
+            output_range[0] + linear_t * (output_range[1] - output_range[0])
+        } else {
+            let in_len = input_range[last_idx] - input_range[last_idx - 1];
+            if in_len.abs() < 1e-7 {
+                return output_range[last_idx];
+            }
+            let linear_t = (value - input_range[last_idx - 1]) / in_len;
+            output_range[last_idx - 1] + linear_t * (output_range[last_idx] - output_range[last_idx - 1])
+        }
+    }
+
+    pub fn interpolate_opts(
+        &self,
+        value: f64,
+        input_range: &[f64],
+        output_range: &[f64],
+        opts_json: &str,
+    ) -> f64 {
+        #[derive(serde::Deserialize)]
+        #[allow(non_snake_case)]
+        struct InterpolateOptionsJson {
+            #[serde(default)]
+            extrapolateLeft: Option<String>,
+            #[serde(default)]
+            extrapolateRight: Option<String>,
+        }
+
+        let (left, right) = if let Ok(opts) = serde_json::from_str::<InterpolateOptionsJson>(opts_json) {
+            (
+                opts.extrapolateLeft.unwrap_or_else(|| "extend".to_string()),
+                opts.extrapolateRight.unwrap_or_else(|| "extend".to_string()),
+            )
+        } else {
+            ("extend".to_string(), "extend".to_string())
+        };
+
+        self.interpolate_extrapolate(value, input_range, output_range, &left, &right)
+    }
+
+    pub fn interpolate_path_3d(
+        &self,
+        p0: &[f32],
+        p1: &[f32],
+        p2: &[f32],
+        p3: &[f32],
+        t: f32,
+    ) -> Vec<f32> {
+        if p0.len() < 3 || p1.len() < 3 || p2.len() < 3 || p3.len() < 3 {
+            return vec![0.0, 0.0, 0.0];
+        }
+        let arr = interpolator::interpolate_cubic_bezier_path_3d(
+            [p0[0], p0[1], p0[2]],
+            [p1[0], p1[1], p1[2]],
+            [p2[0], p2[1], p2[2]],
+            [p3[0], p3[1], p3[2]],
+            t,
+        );
+        arr.to_vec()
+    }
+
+    pub fn add_clip_json(&mut self, clip_json: &str) -> Result<(), JsValue> {
+        let clip_data: AnimationClipData = serde_json::from_str(clip_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid clip JSON: {}", e)))?;
+        self.inner
+            .add_clip(clip_data)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn add_instance_json(&mut self, instance_json: &str) -> Result<(), JsValue> {
+        let inst_data: InstanceData = serde_json::from_str(instance_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid instance JSON: {}", e)))?;
+        self.inner
+            .add_instance(inst_data)
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn set_root_timeline_json(&mut self, timeline_json: &str) -> Result<(), JsValue> {
+        let root_node: TimelineNode = serde_json::from_str(timeline_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid timeline JSON: {}", e)))?;
+        self.inner.set_root_timeline(root_node);
+        Ok(())
+    }
+
+    pub fn prepare(&mut self) -> Result<(), JsValue> {
+        self.inner.prepare().map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn evaluate_frame(&mut self, global_time: f64) -> usize {
+        let instances = self.inner.evaluate_frame(global_time);
+        instances.len()
+    }
+
+    pub fn bake_chunk(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
+        self.inner.bake_chunk(start_ms, end_ms, fps)
+    }
+
+    pub fn bake_range(&mut self, start_ms: f64, end_ms: f64, fps: f64) -> Vec<u8> {
+        self.inner.bake_range(start_ms, end_ms, fps)
+    }
+
+    pub fn get_instance_buffer_ptr(&self) -> *const u8 {
+        gpu_exporter::GpuExporter::get_instance_buffer_bytes(&self.inner.evaluated_gpu_instances)
+            .as_ptr()
+    }
+
+    pub fn instance_size(&self) -> usize {
+        types::INSTANCE_SIZE
+    }
+
+    pub fn get_instance_buffer_byte_length(&self) -> usize {
+        gpu_exporter::GpuExporter::get_instance_buffer_bytes(&self.inner.evaluated_gpu_instances)
+            .len()
+    }
+
+    pub fn export_ir_json(&self) -> Result<String, JsValue> {
+        let ir = self.inner.export_ir();
+        serde_json::to_string(&ir).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    pub fn import_ir_json(&mut self, ir_json: &str) -> Result<(), JsValue> {
+        let ir: EngineIR = serde_json::from_str(ir_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid IR JSON: {}", e)))?;
+        self.inner.import_ir(ir).map_err(|e| JsValue::from_str(&e))
+    }
+
+    // ------------------------------------------------------------------
+    // Additive fast-path (see src/fast.rs): allocation-free per-frame
+    // evaluation for massive instance counts. Upstream API untouched.
+    // ------------------------------------------------------------------
+
+    /// Snapshot per-instance constants for the fast path. Call after all
+    /// clips/instances/timeline have been added (i.e. after `prepare()`).
+    pub fn prepare_fast(&mut self) {
+        self.fast = Some(fast::FastState::from_engine(&self.inner));
+    }
+
+    /// Fast evaluate: zero heap allocations per frame.
+    /// Returns the number of evaluated instances.
+    pub fn evaluate_frame_fast(&mut self, global_time: f64) -> usize {
+        if self.fast.is_none() {
+            self.prepare_fast();
+        }
+        self.fast.as_mut().unwrap().evaluate(global_time)
+    }
+
+    /// Pointer to the fast-path output buffer (count × 80 bytes,
+    /// `#[repr(C, align(16))]` — identical layout to `get_instance_buffer_ptr`).
+    pub fn fast_buffer_ptr(&self) -> *const u8 {
+        match &self.fast {
+            Some(f) => f.out.as_ptr() as *const u8,
+            None => std::ptr::null(),
+        }
+    }
+
+    /// Valid byte length of the fast-path output buffer.
+    pub fn fast_buffer_byte_length(&self) -> usize {
+        match &self.fast {
+            Some(f) => f.buffer_bytes().len(),
+            None => 0,
+        }
+    }
+}
+
+/// Build metadata for the compiled kernel.
+#[wasm_bindgen]
+pub fn kernel_build_info() -> String {
+    format!(
+        "keyframe-engine v{} · wasm32-unknown-unknown · rustc {} · fast-path enabled",
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_RUST_VERSION")
+    )
+}
