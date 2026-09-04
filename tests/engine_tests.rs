@@ -18,6 +18,24 @@ mod unit_tests {
     fn test_gpu_instance_data_layout_and_alignment() {
         assert_eq!(size_of::<GpuInstanceData>(), 80);
         assert_eq!(align_of::<GpuInstanceData>(), 16);
+
+        let inst = GpuInstanceData {
+            transform_matrix: [0.0; 16],
+            opacity: 1.0,
+            visible: 1,
+            clip_index: 0,
+            _padding: 0,
+        };
+        let base = &inst as *const _ as usize;
+        let opacity_offset = (&inst.opacity as *const _ as usize) - base;
+        let visible_offset = (&inst.visible as *const _ as usize) - base;
+        let clip_index_offset = (&inst.clip_index as *const _ as usize) - base;
+        let padding_offset = (&inst._padding as *const _ as usize) - base;
+
+        assert_eq!(opacity_offset, 64, "opacity offset must be 64 bytes (16 * 4 f32s)");
+        assert_eq!(visible_offset, 68, "visible offset must be 68 bytes");
+        assert_eq!(clip_index_offset, 72, "clip_index offset must be 72 bytes");
+        assert_eq!(padding_offset, 76, "_padding offset must be 76 bytes");
     }
 
     #[test]
@@ -118,6 +136,64 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_cubic_bezier_degenerate_curves_error_bound() {
+        let degenerate_cases = [
+            (0.5, 0.0, 0.5, 1.0),   // Near-degenerate horizontal tangent
+            (0.0, 1.5, 1.0, -0.5),  // y overshoot
+            (0.001, 0.001, 0.999, 0.999), // Extreme compression
+        ];
+
+        fn solve_cubic_bezier_ref(p1x: f64, p1y: f64, p2x: f64, p2y: f64, target_x: f64) -> f64 {
+            if target_x <= 0.0 { return 0.0; }
+            if target_x >= 1.0 { return 1.0; }
+
+            let mut low = 0.0;
+            let mut high = 1.0;
+            let mut u = target_x;
+
+            for _ in 0..64 {
+                let one_minus_u = 1.0 - u;
+                let x = 3.0 * one_minus_u * one_minus_u * u * p1x + 3.0 * one_minus_u * u * u * p2x + u * u * u;
+                let err = x - target_x;
+                if err.abs() < 1e-9 { break; }
+                if err > 0.0 {
+                    high = u;
+                } else {
+                    low = u;
+                }
+                let dx = 3.0 * one_minus_u * one_minus_u * p1x + 6.0 * one_minus_u * u * (p2x - p1x) + 3.0 * u * u * (1.0 - p2x);
+                if dx.abs() > 1e-7 {
+                    let next_u = u - err / dx;
+                    if next_u > low && next_u < high {
+                        u = next_u;
+                        continue;
+                    }
+                }
+                u = 0.5 * (low + high);
+            }
+
+            let one_minus_u = 1.0 - u;
+            3.0 * one_minus_u * one_minus_u * u * p1y + 3.0 * one_minus_u * u * u * p2y + u * u * u
+        }
+
+        for &(p1x, p1y, p2x, p2y) in &degenerate_cases {
+            let mut step = 0;
+            while step <= 1000 {
+                let t = step as f64 / 1000.0;
+                let result = solve_cubic_bezier(p1x, p1y, p2x, p2y, t);
+                let reference = solve_cubic_bezier_ref(p1x, p1y, p2x, p2y, t);
+                let diff = (result - reference).abs();
+                assert!(
+                    diff < 1e-6,
+                    "Divergence at t={}: result={}, reference={}, diff={}",
+                    t, result, reference, diff
+                );
+                step += 1;
+            }
+        }
+    }
+
+    #[test]
     fn test_spring_solver() {
         let val_start = solve_spring(0.0, 30.0, 10.0, 100.0, 1.0);
         let val_mid = solve_spring(15.0, 30.0, 10.0, 100.0, 1.0);
@@ -126,6 +202,52 @@ mod unit_tests {
         assert_eq!(val_start, 0.0);
         assert!(val_mid > 0.0);
         assert!((val_late - 1.0).abs() < 0.05);
+    }
+
+    #[test]
+    fn test_analytical_spring_remotion_parity() {
+        let configs = [
+            (10.0, 100.0, 1.0), // Underdamped
+            (0.5, 200.0, 1.0),  // Very underdamped
+            (20.0, 100.0, 1.0), // Critically damped (zeta = 1.0)
+            (30.0, 100.0, 1.0), // Overdamped
+        ];
+
+        for &(damping, stiffness, mass) in &configs {
+            for frame in 0..300 {
+                let frame_f = frame as f64;
+                let rust_val = solve_spring(frame_f, 30.0, damping, stiffness, mass);
+
+                // Re-evaluate analytical formula independently
+                let t = frame_f / 30.0;
+                let ref_val = if t <= 0.0 {
+                    0.0
+                } else {
+                    let w0 = (stiffness / mass).sqrt();
+                    let zeta = damping / (2.0 * (stiffness * mass).sqrt());
+
+                    if (zeta - 1.0).abs() < 1e-5 {
+                        1.0 - (1.0 + w0 * t) * (-w0 * t).exp()
+                    } else if zeta < 1.0 {
+                        let wd = w0 * (1.0 - zeta * zeta).sqrt();
+                        1.0 - (-zeta * w0 * t).exp() * ((zeta * w0 / wd) * (wd * t).sin() + (wd * t).cos())
+                    } else {
+                        let r1 = -w0 * (zeta - (zeta * zeta - 1.0).sqrt());
+                        let r2 = -w0 * (zeta + (zeta * zeta - 1.0).sqrt());
+                        let c2 = r1 / (r2 - r1);
+                        let c1 = 1.0 - c2;
+                        1.0 - (c1 * (r1 * t).exp() + c2 * (r2 * t).exp())
+                    }
+                };
+
+                let diff = (rust_val - ref_val).abs();
+                assert!(
+                    diff < 1e-10,
+                    "Mismatch frame={} config=({},{},{}): rust={}, ref={}, diff={}",
+                    frame, damping, stiffness, mass, rust_val, ref_val, diff
+                );
+            }
+        }
     }
 
     #[test]
