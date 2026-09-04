@@ -313,6 +313,7 @@ npm test
   - `starter-kits/remotion-compat`: Remotion 代码组件适配模版
   - `starter-kits/live-physics`: 实时手势拖拽与弹簧物理回弹模版
   - `starter-kits/sdf-raymarching`: WebGL2/WebGPU CSG 距离场 Raymarching 与关键帧动画桥接模版
+  - `starter-kits/img2sdf`: 基于 vinhhien112/img2obj 规范合约的参考图片程序化 SDF CSG 隐式距离场造型与 Keyframe 动画桥接 Starter Kit
 
 ---
 

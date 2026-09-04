@@ -76,3 +76,52 @@ test('WGSL Compute Template: Contains full keyframe TRS math and cubic bezier ea
   assert.ok(COMPUTE_TEMPLATE.includes('fn quat_slerp'));
   assert.ok(COMPUTE_TEMPLATE.includes('fn compose_trs'));
 });
+
+test('Cubic Bezier Newton-Raphson Degenerate Cases Convergence (8 iterations vs 64 ground truth)', () => {
+  function solveCubicBezier64(p1x, p1y, p2x, p2y, t) {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    let u = t;
+    for (let i = 0; i < 64; i++) {
+      const omu = 1 - u;
+      const x = 3 * omu * omu * u * p1x + 3 * omu * u * u * p2x + u * u * u;
+      const dx = 3 * omu * omu * p1x + 6 * omu * u * (p2x - p1x) + 3 * u * u * (1 - p2x);
+      if (Math.abs(dx) < 1e-12) break;
+      u -= (x - t) / dx;
+      u = Math.max(0, Math.min(1, u));
+    }
+    const omu = 1 - u;
+    return 3 * omu * omu * u * p1y + 3 * omu * u * u * p2y + u * u * u;
+  }
+
+  const degenerateCases = [
+    [0.5, 0.0, 0.5, 1.0],
+    [0.0, 1.5, 1.0, -0.5],
+    [0.001, 0.001, 0.999, 0.999],
+    [0.1, 0.9, 0.9, 0.1],
+  ];
+
+  for (const [p1x, p1y, p2x, p2y] of degenerateCases) {
+    const engine = new Engine();
+    const clip = new Clip("bezier_test")
+      .duration(1000)
+      .addKeyframe(new Keyframe(0).easing(Easing.CubicBezier, { p1x, p1y, p2x, p2y }).transform(new TransformBuilder().translateX(0).build()))
+      .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+    engine.addClip(clip);
+    engine.addInstances([new Instance("bezier_test", "i1")]);
+    engine.prepared = true;
+
+    for (let step = 0; step <= 100; step++) {
+      const t = step / 100;
+      const timeMs = t * 1000;
+      const evalVal = engine.getEvaluatedInstances(timeMs, true)[0].transformMatrix[12];
+      const refVal = solveCubicBezier64(p1x, p1y, p2x, p2y, t) * 100;
+
+      assert.ok(
+        Math.abs(evalVal - refVal) < 1e-3,
+        `Divergence at t=${t} for curve (${p1x}, ${p1y}, ${p2x}, ${p2y}): eval=${evalVal}, ref=${refVal}`
+      );
+    }
+  }
+});

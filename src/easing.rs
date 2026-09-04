@@ -33,6 +33,69 @@ pub fn solve_cubic_bezier(p1x: f64, p1y: f64, p2x: f64, p2y: f64, t: f64) -> f64
         + u * u * u
 }
 
+/// Reference 64-iteration Newton-Raphson cubic-bezier solver for precision validation
+pub fn solve_cubic_bezier_ref_64(p1x: f64, p1y: f64, p2x: f64, p2y: f64, t: f64) -> f64 {
+    if t <= 0.0 {
+        return 0.0;
+    }
+    if t >= 1.0 {
+        return 1.0;
+    }
+
+    let mut u = t;
+    for _ in 0..64 {
+        let one_minus_u = 1.0 - u;
+        let x = 3.0 * one_minus_u * one_minus_u * u * p1x
+            + 3.0 * one_minus_u * u * u * p2x
+            + u * u * u;
+        let dx = 3.0 * one_minus_u * one_minus_u * p1x
+            + 6.0 * one_minus_u * u * (p2x - p1x)
+            + 3.0 * u * u * (1.0 - p2x);
+        if dx.abs() < 1e-12 {
+            break;
+        }
+        let err = x - t;
+        u -= err / dx;
+        u = u.clamp(0.0, 1.0);
+    }
+
+    let one_minus_u = 1.0 - u;
+    3.0 * one_minus_u * one_minus_u * u * p1y
+        + 3.0 * one_minus_u * u * u * p2y
+        + u * u * u
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cubic_bezier_degenerate_cases_convergence() {
+        // Degenerate curve cases: flat slopes, Y overshooting, extreme compression
+        let degenerate_cases = [
+            (0.5, 0.0, 0.5, 1.0),       // Flat slope
+            (0.0, 1.5, 1.0, -0.5),      // Y overshoot
+            (0.001, 0.001, 0.999, 0.999), // Compressed
+            (0.1, 0.9, 0.9, 0.1),       // Steep S-curve
+        ];
+
+        for &(p1x, p1y, p2x, p2y) in &degenerate_cases {
+            for step in 0..=1000 {
+                let t = (step as f64) / 1000.0;
+                let val_8 = solve_cubic_bezier(p1x, p1y, p2x, p2y, t);
+                let val_64 = solve_cubic_bezier_ref_64(p1x, p1y, p2x, p2y, t);
+
+                let diff = (val_8 - val_64).abs();
+                assert!(
+                    diff < 1e-5,
+                    "Degenerate curve ({}, {}, {}, {}) divergence at t={}: 8-step={}, 64-step={}, diff={}",
+                    p1x, p1y, p2x, p2y, t, val_8, val_64, diff
+                );
+            }
+        }
+    }
+}
+
 fn bounce_out(t: f64) -> f64 {
     if t < 1.0 / 2.75 {
         7.5625 * t * t
