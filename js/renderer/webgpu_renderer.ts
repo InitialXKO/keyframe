@@ -17,11 +17,12 @@ export class WebGPURenderer implements IRenderer {
   public async init(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void> {
     this.canvas = canvas;
 
-    if (typeof navigator === "undefined" || !navigator.gpu) {
+    const nav = typeof navigator !== "undefined" ? (navigator as any) : null;
+    if (!nav || !nav.gpu) {
       throw new Error("WebGPU is not supported in this environment.");
     }
 
-    const adapter = await navigator.gpu.requestAdapter();
+    const adapter = await nav.gpu.requestAdapter();
     if (!adapter) {
       throw new Error("Failed to request WebGPU adapter.");
     }
@@ -34,7 +35,7 @@ export class WebGPURenderer implements IRenderer {
       const gpuContext = (canvas as HTMLCanvasElement).getContext("webgpu") as GPUCanvasContext | null;
       if (gpuContext) {
         this.context = gpuContext;
-        const format = navigator.gpu.getPreferredCanvasFormat();
+        const format = nav.gpu.getPreferredCanvasFormat();
         gpuContext.configure({
           device,
           format,

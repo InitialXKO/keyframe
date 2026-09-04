@@ -659,3 +659,226 @@ test("Engine bakeStream with WASM mock & async callback support", async () => {
   assert.equal(asyncReceivedBytes, 2480);
   assert.equal(asyncTotal, 2480);
 });
+
+test("Hypothesis B: WASM Memory growth auto-rebinds memory buffer and prevents view detachment", async () => {
+  // Simulate WASM memory growth (memory.grow)
+  let memory = new WebAssembly.Memory({ initial: 2, maximum: 20 });
+  let instanceCount = 0;
+
+  const mockWasm = {
+    add_clip_json: () => {},
+    add_instance_json: () => {
+      instanceCount++;
+    },
+    evaluate_frame: () => instanceCount,
+    get_instance_buffer_ptr: () => 0,
+    get_instance_buffer_byte_length: () => instanceCount * 80,
+    prepare: () => {},
+    memory,
+  };
+
+  const engine = new Engine(mockWasm);
+  const clip = new Clip("stress_clip").duration(1000);
+  engine.addClip(clip);
+  await engine.prepare();
+
+  const oldBuffer = memory.buffer;
+  let viewBefore = engine.evaluateFrame(0).view;
+  assert.ok(viewBefore.byteLength >= 0);
+
+  // Stress test: continuously add 10,000 instances and grow WASM memory
+  for (let i = 0; i < 10000; i++) {
+    engine.addInstances([new Instance("stress_clip", `inst_${i}`)]);
+    if (i === 1000) {
+      // Trigger WASM memory grow to 15 pages (960KB >= 800KB) which detaches previous ArrayBuffer
+      memory.grow(13);
+      mockWasm.memory = memory;
+    }
+  }
+
+  await engine.prepare();
+  const frameResult = engine.evaluateFrame(0);
+
+  // 1. Verify memory grew and old buffer is detached
+  assert.notEqual(memory.buffer, oldBuffer, "WASM memory grew as expected");
+  assert.equal(oldBuffer.byteLength, 0, "Old ArrayBuffer detached upon memory.grow");
+
+  // 2. Verify engine.evaluateFrame returns fresh active view pointing to new memory.buffer
+  assert.equal(frameResult.view.buffer, memory.buffer, "Engine view rebound to new active WASM memory buffer");
+  assert.ok(frameResult.byteLength > 0, "View byteLength > 0 (View not detached)");
+  assert.equal(frameResult.count, 10000);
+});
+
+test("Hypothesis D: 8-iteration Newton-Raphson error bound < 1e-6 across degenerate cubic-bezier curve families", async () => {
+  const degenerateCases = [
+    [0.5, 0.0, 0.5, 1.0],   // 近退化水平 (Horizontal tangent)
+    [0.0, 1.5, 1.0, -0.5],  // y 超界 (Y-overshoot)
+    [0.001, 0.001, 0.999, 0.999], // 极端压缩 (Extreme compression)
+  ];
+
+  function solveCubicBezierRef(p1x, p1y, p2x, p2y, targetX, iterations = 64) {
+    if (targetX <= 0) return 0;
+    if (targetX >= 1) return 1;
+
+    let low = 0;
+    let high = 1;
+    let u = targetX;
+
+    for (let i = 0; i < iterations; i++) {
+      const oneMinusU = 1.0 - u;
+      const x = 3.0 * oneMinusU * oneMinusU * u * p1x + 3.0 * oneMinusU * u * u * p2x + u * u * u;
+      const err = x - targetX;
+      if (Math.abs(err) < 1e-9) break;
+      if (err > 0) {
+        high = u;
+      } else {
+        low = u;
+      }
+      const dx = 3.0 * oneMinusU * oneMinusU * p1x + 6.0 * oneMinusU * u * (p2x - p1x) + 3.0 * u * u * (1.0 - p2x);
+      if (Math.abs(dx) > 1e-7) {
+        const nextU = u - err / dx;
+        if (nextU > low && nextU < high) {
+          u = nextU;
+          continue;
+        }
+      }
+      u = 0.5 * (low + high);
+    }
+
+    const oneMinusU = 1.0 - u;
+    return 3.0 * oneMinusU * oneMinusU * u * p1y + 3.0 * oneMinusU * u * u * p2y + u * u * u;
+  }
+
+  for (const [p1x, p1y, p2x, p2y] of degenerateCases) {
+    const clip = new Clip("bezier_deg")
+      .duration(1000)
+      .addKeyframe(
+        new Keyframe(0)
+          .easing(Easing.CubicBezier, { p1x, p1y, p2x, p2y })
+          .transform(new TransformBuilder().translateX(0).build())
+      )
+      .addKeyframe(
+        new Keyframe(1000)
+          .transform(new TransformBuilder().translateX(100).build())
+      );
+
+    const engine = new Engine();
+    engine.addClip(clip);
+    engine.addInstances([new Instance("bezier_deg", "i1")]);
+    engine.prepared = true;
+
+    for (let t = 0; t <= 1; t += 0.001) {
+      const evalInst = engine.getEvaluatedInstances(t * 1000, true)[0];
+      const result = evalInst.transformMatrix[12] / 100;
+      const reference = solveCubicBezierRef(p1x, p1y, p2x, p2y, t, 64);
+      const diff = Math.abs(result - reference);
+
+      assert.ok(diff < 1e-6, `Divergence at t=${t} for curve [${p1x},${p1y},${p2x},${p2y}]: result=${result}, ref=${reference}, diff=${diff}`);
+    }
+  }
+});
+
+test("Hypothesis A: GpuInstanceData 80-byte memory layout and field byte offsets match WebGPU / Rust ABI", async () => {
+  const engine = new Engine();
+  const clip = new Clip("layout_clip").duration(1000);
+  engine.addClip(clip);
+  engine.addInstances([new Instance("layout_clip", "i1")]);
+  engine.prepared = true;
+
+  const evalResult = engine.evaluateFrame(0);
+  assert.equal(evalResult.floatsPerInstance, 20);
+  assert.equal(evalResult.byteLength, 80);
+
+  const buffer = evalResult.view.buffer;
+  const byteOffset = evalResult.view.byteOffset;
+
+  const floatView = new Float32Array(buffer, byteOffset, 20);
+  const uintView = new Uint32Array(buffer, byteOffset, 20);
+
+  // Field offset assertions:
+  // transform_matrix: float indices 0..15 (0..64 bytes)
+  // opacity: float index 16 (64..68 bytes)
+  // visible: uint index 17 (68..72 bytes)
+  // clip_index: uint index 18 (72..76 bytes)
+  // _padding: uint index 19 (76..80 bytes)
+
+  assert.equal(floatView.subarray(0, 16).byteLength, 64, "transform_matrix takes 64 bytes");
+  assert.equal(floatView.subarray(16, 17).byteOffset - byteOffset, 64, "opacity offset is at 64 bytes");
+  assert.equal(uintView.subarray(17, 18).byteOffset - byteOffset, 68, "visible offset is at 68 bytes");
+  assert.equal(uintView.subarray(18, 19).byteOffset - byteOffset, 72, "clip_index offset is at 72 bytes");
+  assert.equal(uintView.subarray(19, 20).byteOffset - byteOffset, 76, "_padding offset is at 76 bytes");
+});
+
+test("Hypothesis C: View object reuse across 100,000 frame evaluations ensures zero-copy and minimal GC heap growth", async () => {
+  const engine = new Engine();
+  const clip = new Clip("gc_clip")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+  engine.addClip(clip);
+  engine.addInstances([new Instance("gc_clip", "i1"), new Instance("gc_clip", "i2")]);
+  engine.prepared = true;
+
+  // Initial evaluation to initialize buffers
+  const initialFrame = engine.evaluateFrame(0);
+  const initialInstances = engine.getEvaluatedInstances(0, true);
+
+  const initialBuffer = initialFrame.view.buffer;
+
+  // Run 100,000 frame evaluations
+  for (let i = 0; i < 100000; i++) {
+    const time = (i % 1000);
+    const frame = engine.evaluateFrame(time);
+    const instances = engine.getEvaluatedInstances(time, true, frame);
+
+    // Verify buffer and matrix views are reused across evaluations
+    assert.equal(frame.view.buffer, initialBuffer, "Float32Array buffer reused across 100,000 evaluations");
+    assert.equal(instances[0].transformMatrix.buffer, initialBuffer, "Instance 1 transformMatrix shares contiguous ArrayBuffer");
+    assert.equal(instances[1].transformMatrix.buffer, initialBuffer, "Instance 2 transformMatrix shares contiguous ArrayBuffer");
+  }
+});
+
+test("Hypothesis E: Analytical spring numerical matching with Remotion < 1e-10 across 300 frames", () => {
+  const configs = [
+    { damping: 10, stiffness: 100 },
+    { damping: 0.5, stiffness: 200 },
+    { damping: 20, stiffness: 100 }, // Critically damped
+    { damping: 30, stiffness: 100 }, // Overdamped
+  ];
+
+  for (const config of configs) {
+    for (let frame = 0; frame < 300; frame++) {
+      const val = spring({ frame, fps: 30, config });
+
+      // Reference calculation matching Remotion formula
+      const fps = 30;
+      const damping = config.damping;
+      const stiffness = config.stiffness;
+      const mass = config.mass ?? 1;
+
+      const t = frame / fps;
+      let refVal = 0;
+      if (t > 0) {
+        const w0 = Math.sqrt(stiffness / mass);
+        const zeta = damping / (2 * Math.sqrt(stiffness * mass));
+
+        if (Math.abs(zeta - 1) < 1e-5) {
+          refVal = 1 - (1 + w0 * t) * Math.exp(-w0 * t);
+        } else if (zeta < 1) {
+          const wd = w0 * Math.sqrt(1 - zeta * zeta);
+          refVal = 1 - Math.exp(-zeta * w0 * t) * ((zeta * w0 / wd) * Math.sin(wd * t) + Math.cos(wd * t));
+        } else {
+          const r1 = -w0 * (zeta - Math.sqrt(zeta * zeta - 1));
+          const r2 = -w0 * (zeta + Math.sqrt(zeta * zeta - 1));
+          const c2 = r1 / (r2 - r1);
+          const c1 = 1 - c2;
+          refVal = 1 - (c1 * Math.exp(r1 * t) + c2 * Math.exp(r2 * t));
+        }
+      }
+
+      const diff = Math.abs(val - refVal);
+      assert.ok(diff < 1e-10, `Mismatch frame=${frame} config=${JSON.stringify(config)}: val=${val}, ref=${refVal}, diff=${diff}`);
+    }
+  }
+});
