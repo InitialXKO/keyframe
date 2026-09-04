@@ -17,7 +17,7 @@
  * is reused across calls, so consumers must read it within the same tick.
  */
 
-import type { EvaluatedInstance } from "./builder/types";
+import type { EvaluatedInstance } from "./index";
 
 const BYTES_PER_INSTANCE = 80;
 const FLOATS_PER_INSTANCE = 20;

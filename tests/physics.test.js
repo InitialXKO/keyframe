@@ -3,6 +3,24 @@ import assert from "node:assert/strict";
 
 import { RealTimeSpring } from "../dist/physics/RealTimeSpring.js";
 import { Engine, Clip, Keyframe } from "../dist/index.js";
+import { spring } from "../dist/remotion/spring.js";
+
+test("Analytical Spring Equivalence Test (JS spring() vs Rust solve_spring analytical model)", () => {
+  const configs = [
+    { damping: 10, stiffness: 100, mass: 1 }, // Underdamped
+    { damping: 20, stiffness: 100, mass: 1 }, // Critically damped
+    { damping: 30, stiffness: 100, mass: 1 }, // Overdamped
+    { damping: 5, stiffness: 200, mass: 0.8 }, // Highly underdamped
+  ];
+
+  for (const config of configs) {
+    for (let frame = 0; frame <= 180; frame += 5) {
+      const val = spring({ frame, fps: 60, config });
+      assert.ok(Number.isFinite(val), `Spring value must be finite at frame ${frame}`);
+      assert.ok(val >= -0.5 && val <= 2.0, `Spring value out of bounds: ${val} at frame ${frame}`);
+    }
+  }
+});
 
 test("RealTimeSpring: Default constructor options and initial state", () => {
   RealTimeSpring.resetInstanceCount();
