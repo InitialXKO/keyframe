@@ -32,7 +32,9 @@ pub enum EasingType {
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BlendMode {
+    #[serde(alias = "source-over", alias = "source_over", alias = "override")]
     Override,
+    #[serde(alias = "lighter", alias = "additive")]
     Additive,
 }
 

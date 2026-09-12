@@ -90,7 +90,7 @@ export interface InstanceData {
   delay: number;
   duration_scale: number;
   time_remapping_speed?: number;
-  blend_mode?: BlendMode;
+  blend_mode?: BlendMode | string;
   initial_transform: TransformData;
 }
 
