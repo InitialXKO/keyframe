@@ -88,6 +88,47 @@ test("JS Evaluator: Evaluates clip keyframes accurately without WASM instance (I
   assert.equal(e.visible, true);
 });
 
+test("JS Evaluator: Supports CSS blend mode string aliases ('source-over', 'source_over', 'lighter', 'additive')", async () => {
+  const engine = new Engine();
+  const clip = new Clip("clip1")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+  const instSourceOver = {
+    id: "inst_so",
+    clip_id: "clip1",
+    opacity: 1.0,
+    visible: true,
+    delay: 0,
+    duration_scale: 1.0,
+    blend_mode: "source-over",
+    initial_transform: new TransformBuilder().translateX(50).build(),
+  };
+
+  const instLighter = {
+    id: "inst_lighter",
+    clip_id: "clip1",
+    opacity: 1.0,
+    visible: true,
+    delay: 0,
+    duration_scale: 1.0,
+    blend_mode: "lighter",
+    initial_transform: new TransformBuilder().translateX(50).build(),
+  };
+
+  engine.addClip(clip);
+  engine.addInstances([instSourceOver, instLighter]);
+  engine.prepared = true;
+
+  // At globalTime = 500ms (clip tx = 50):
+  // source-over (Override): multiply initial (tx=50) * clip (tx=50) -> tx = 100
+  // lighter (Additive): initial tx=50 + clip tx=50 = 100 (for linear translation)
+  const evalInstances = engine.getEvaluatedInstances(500, true);
+  assert.equal(evalInstances[0].transformMatrix[12], 100);
+  assert.equal(evalInstances[1].transformMatrix[12], 100);
+});
+
 test("JS Evaluator: Supports Additive BlendMode, delay, time remapping, and initial transform", async () => {
   const engine = new Engine();
   const clip = new Clip("clip1")

@@ -277,6 +277,49 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_blend_mode_css_aliases_deserialization() {
+        let json_override_css = r#"{
+            "id": "inst_css_override",
+            "clip_id": "clip1",
+            "opacity": 1.0,
+            "visible": true,
+            "delay": 0.0,
+            "duration_scale": 1.0,
+            "time_remapping_speed": 1.0,
+            "blend_mode": "source-over",
+            "initial_transform": {
+                "translation": [0.0, 0.0, 0.0],
+                "rotation_quat": [0.0, 0.0, 0.0, 1.0],
+                "scale": [1.0, 1.0, 1.0],
+                "origin": [0.0, 0.0, 0.0]
+            }
+        }"#;
+
+        let json_lighter_css = r#"{
+            "id": "inst_css_lighter",
+            "clip_id": "clip1",
+            "opacity": 1.0,
+            "visible": true,
+            "delay": 0.0,
+            "duration_scale": 1.0,
+            "time_remapping_speed": 1.0,
+            "blend_mode": "lighter",
+            "initial_transform": {
+                "translation": [0.0, 0.0, 0.0],
+                "rotation_quat": [0.0, 0.0, 0.0, 1.0],
+                "scale": [1.0, 1.0, 1.0],
+                "origin": [0.0, 0.0, 0.0]
+            }
+        }"#;
+
+        let inst_override: InstanceData = serde_json::from_str(json_override_css).unwrap();
+        assert_eq!(inst_override.blend_mode, BlendMode::Override);
+
+        let inst_lighter: InstanceData = serde_json::from_str(json_lighter_css).unwrap();
+        assert_eq!(inst_lighter.blend_mode, BlendMode::Additive);
+    }
+
+    #[test]
     fn test_additive_and_time_remapping() {
         let mut engine = EngineState::new();
         let clip_data = AnimationClipData {

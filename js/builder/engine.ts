@@ -752,8 +752,9 @@ export class Engine {
       const clipMat = transformToMatrix(clipTransform);
 
       let finalMat: Float32Array;
-      const blendMode = inst.blend_mode ?? BlendMode.Override;
-      if (blendMode === BlendMode.Override) {
+      const blendModeStr = String(inst.blend_mode ?? BlendMode.Override).toLowerCase();
+      const isAdditive = blendModeStr === "additive" || blendModeStr === "lighter";
+      if (!isAdditive) {
         finalMat = multiplyMatrices(initialMat, clipMat);
       } else {
         // Additive blend mode: initial_mat + (clip_mat - Mat4::IDENTITY)
