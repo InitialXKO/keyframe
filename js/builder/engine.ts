@@ -1,6 +1,7 @@
-import { AnimationClipData, BlendMode, CubicBezierParams, Easing, EngineIR, EvaluatedFrameResult, EvaluatedInstance, InstanceData, KeyframeData, PrepareOptions, TimelineNodeData, TransformData } from "./types.js";
+import { AnimationClipData, BlendMode, CubicBezierParams, Easing, EngineDirtyFlags, EngineIR, EvaluatedFrameResult, EvaluatedInstance, InstanceData, KeyframeData, PrepareOptions, TimelineNodeData, TransformData } from "./types.js";
 import { Clip } from "./clip.js";
 import { OPFSStorage } from "../opfs_storage.js";
+import { globalBufferPool, globalInstancePool } from "./buffer_pool.js";
 
 export { EvaluatedInstance, EvaluatedFrameResult, PrepareOptions } from "./types.js";
 import { Instance } from "./instance.js";
@@ -469,13 +470,13 @@ function evaluateClipTo(clip: AnimationClipData, localTime: number, outResult: C
   outResult.opacity = kf.opacity ?? 1.0;
 }
 
-function flattenTimeline(root: TimelineNodeData): Map<string, number> {
-  const map = new Map<string, number>();
+function flattenTimelineToMap(root: TimelineNodeData, outMap: Map<string, number>): Map<string, number> {
+  outMap.clear();
 
   function traverse(node: TimelineNodeData, parentTime: number) {
     const nodeStart = parentTime + node.start_time;
     if (node.instance_id) {
-      map.set(node.instance_id, nodeStart);
+      outMap.set(node.instance_id, nodeStart);
     }
     let currentChildStart = nodeStart;
     if (node.children) {
@@ -489,7 +490,7 @@ function flattenTimeline(root: TimelineNodeData): Map<string, number> {
   }
 
   traverse(root, 0);
-  return map;
+  return outMap;
 }
 
 export class Engine {
@@ -503,15 +504,16 @@ export class Engine {
   private opfsStorage: OPFSStorage = new OPFSStorage();
   private jsEvaluatedBuffer?: Float32Array;
   private jsEvaluatedUintBuffer?: Uint32Array;
-  private instanceAdditiveMap = new WeakMap<InstanceData, boolean>();
   private lastEvaluatedFrameResult?: EvaluatedFrameResult;
 
+  private dirtyFlags: number = EngineDirtyFlags.DIRTY_ALL;
   private scratchInitialMat = new Float32Array(16);
   private scratchClipMat = new Float32Array(16);
-  private cachedClipIndexMap?: Map<string, number>;
-  private cachedScheduledMap?: Map<string, number>;
-  private cachedEvaluatedInstances?: EvaluatedInstance[];
-  private cachedSubarrays?: Float32Array[];
+  private cachedClipIndexMap: Map<string, number> = new Map();
+  private cachedScheduledMap: Map<string, number> = new Map();
+  private cachedAdditiveFlags: Uint8Array = new Uint8Array(0);
+  private cachedEvaluatedInstances: EvaluatedInstance[] = [];
+  private cachedSubarrays: Float32Array[] = [];
 
   constructor(wasmInstance?: any) {
     this.wasmInstance = wasmInstance;
@@ -582,7 +584,7 @@ export class Engine {
     const data = clip instanceof Clip ? clip.build() : clip;
     delete (data as any)._sortedKeyframes;
     this.clips.set(data.id, data);
-    this.cachedClipIndexMap = undefined;
+    this.dirtyFlags |= EngineDirtyFlags.DIRTY_CLIPS;
     if (this.wasmInstance) {
       this.wasmInstance.add_clip_json(JSON.stringify(data));
     }
@@ -592,20 +594,18 @@ export class Engine {
   public addInstances(instances: (Instance | InstanceData)[]): this {
     for (const inst of instances) {
       const data = inst instanceof Instance ? inst.build() : inst;
-      this.instanceAdditiveMap.set(data, isAdditiveBlendMode(data.blend_mode));
       this.instances.push(data);
       if (this.wasmInstance) {
         this.wasmInstance.add_instance_json(JSON.stringify(data));
       }
     }
-    this.cachedSubarrays = undefined;
-    this.cachedEvaluatedInstances = undefined;
+    this.dirtyFlags |= EngineDirtyFlags.DIRTY_INSTANCES;
     return this;
   }
 
   public setRootTimeline(node: TimelineNodeData): this {
     this.rootTimeline = node;
-    this.cachedScheduledMap = undefined;
+    this.dirtyFlags |= EngineDirtyFlags.DIRTY_TIMELINE;
     if (this.wasmInstance) {
       this.wasmInstance.set_root_timeline_json(JSON.stringify(node));
     }
@@ -791,10 +791,13 @@ export class Engine {
     const totalFloats = count * floatsPerInst;
 
     if (!this.jsEvaluatedBuffer || this.jsEvaluatedBuffer.length < totalFloats) {
-      this.jsEvaluatedBuffer = new Float32Array(totalFloats);
-      this.jsEvaluatedUintBuffer = new Uint32Array(this.jsEvaluatedBuffer.buffer, 0, totalFloats);
-      this.cachedSubarrays = undefined;
-      this.cachedEvaluatedInstances = undefined;
+      this.jsEvaluatedBuffer = globalBufferPool.acquireFloat32Array(totalFloats);
+      this.jsEvaluatedUintBuffer = globalBufferPool.acquireUint32Array(
+        this.jsEvaluatedBuffer.buffer,
+        this.jsEvaluatedBuffer.byteOffset,
+        totalFloats
+      );
+      this.dirtyFlags |= EngineDirtyFlags.DIRTY_INSTANCES;
     }
     const floatView = totalFloats === this.jsEvaluatedBuffer.length
       ? this.jsEvaluatedBuffer
@@ -802,22 +805,38 @@ export class Engine {
 
     const uintView = (this.jsEvaluatedUintBuffer && totalFloats === this.jsEvaluatedUintBuffer.length)
       ? this.jsEvaluatedUintBuffer
-      : new Uint32Array(floatView.buffer, floatView.byteOffset, totalFloats);
+      : globalBufferPool.acquireUint32Array(floatView.buffer, floatView.byteOffset, totalFloats);
 
-    if (!this.cachedScheduledMap) {
-      this.cachedScheduledMap = this.rootTimeline ? flattenTimeline(this.rootTimeline) : new Map<string, number>();
+    if (this.dirtyFlags & EngineDirtyFlags.DIRTY_TIMELINE) {
+      if (this.rootTimeline) {
+        flattenTimelineToMap(this.rootTimeline, this.cachedScheduledMap);
+      } else {
+        this.cachedScheduledMap.clear();
+      }
+      this.dirtyFlags &= ~EngineDirtyFlags.DIRTY_TIMELINE;
     }
     const scheduledMap = this.cachedScheduledMap;
 
-    if (!this.cachedClipIndexMap) {
-      this.cachedClipIndexMap = new Map<string, number>();
+    if (this.dirtyFlags & EngineDirtyFlags.DIRTY_CLIPS) {
+      this.cachedClipIndexMap.clear();
       let counter = 0;
       for (const clipId of this.clips.keys()) {
         this.cachedClipIndexMap.set(clipId, counter++);
       }
+      this.dirtyFlags &= ~EngineDirtyFlags.DIRTY_CLIPS;
     }
     const clipIndexMap = this.cachedClipIndexMap;
     const clipMap = this.clips;
+
+    if (this.dirtyFlags & EngineDirtyFlags.DIRTY_INSTANCES) {
+      if (this.cachedAdditiveFlags.length < count) {
+        this.cachedAdditiveFlags = new Uint8Array(count);
+      }
+      for (let i = 0; i < count; i++) {
+        this.cachedAdditiveFlags[i] = isAdditiveBlendMode(this.instances[i].blend_mode) ? 1 : 0;
+      }
+      this.dirtyFlags &= ~EngineDirtyFlags.DIRTY_INSTANCES;
+    }
 
     for (let i = 0; i < count; i++) {
       const inst = this.instances[i];
@@ -862,11 +881,7 @@ export class Engine {
       writeTransformToMatrix(inst.initial_transform ?? DEFAULT_TRANSFORM, this.scratchInitialMat, 0);
       writeTransformToMatrix(clipTransform, this.scratchClipMat, 0);
 
-      let isAdditive = this.instanceAdditiveMap.get(inst);
-      if (isAdditive === undefined) {
-        isAdditive = isAdditiveBlendMode(inst.blend_mode);
-        this.instanceAdditiveMap.set(inst, isAdditive);
-      }
+      const isAdditive = this.cachedAdditiveFlags[i] === 1;
       if (!isAdditive) {
         multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
       } else {
@@ -981,30 +996,31 @@ export class Engine {
     const uintView = evalResult.uintView;
     const floatsPerInst = evalResult.floatsPerInstance || 20;
 
-    if (
-      !this.cachedEvaluatedInstances ||
+    const needsRebuild =
       this.cachedEvaluatedInstances.length !== count ||
-      !this.cachedSubarrays ||
       this.cachedSubarrays.length !== count ||
-      this.cachedSubarrays[0]?.buffer !== floatView.buffer ||
-      this.cachedSubarrays[0]?.byteOffset !== floatView.byteOffset
-    ) {
-      this.cachedSubarrays = new Array(count);
-      this.cachedEvaluatedInstances = new Array(count);
+      !this.cachedSubarrays[0] ||
+      this.cachedSubarrays[0].buffer !== floatView.buffer ||
+      this.cachedSubarrays[0].byteOffset !== floatView.byteOffset;
 
+    if (needsRebuild) {
+      const pooledInstances = globalInstancePool.acquire(count);
+      this.cachedEvaluatedInstances = pooledInstances.slice(0, count);
+      if (this.cachedSubarrays.length !== count) {
+        this.cachedSubarrays = new Array(count);
+      }
       for (let i = 0; i < count; i++) {
         const offset = i * floatsPerInst;
         const transformMatrix = floatView.subarray(offset, offset + 16);
         this.cachedSubarrays[i] = transformMatrix;
         const instData = this.instances[i];
-        this.cachedEvaluatedInstances[i] = {
-          id: instData?.id,
-          clipId: instData?.clip_id,
-          transformMatrix,
-          opacity: 1.0,
-          visible: true,
-          clipIndex: 0,
-        };
+        const item = this.cachedEvaluatedInstances[i];
+        item.id = instData?.id;
+        item.clipId = instData?.clip_id;
+        item.transformMatrix = transformMatrix;
+        item.opacity = 1.0;
+        item.visible = true;
+        item.clipIndex = 0;
       }
     }
 
@@ -1235,11 +1251,11 @@ export class Engine {
   public importIR(ir: EngineIR): void {
     this.clips.clear();
     this.instances = [];
-    this.instanceAdditiveMap = new WeakMap();
-    this.cachedClipIndexMap = undefined;
-    this.cachedScheduledMap = undefined;
-    this.cachedSubarrays = undefined;
-    this.cachedEvaluatedInstances = undefined;
+    this.cachedClipIndexMap.clear();
+    this.cachedScheduledMap.clear();
+    this.cachedSubarrays.length = 0;
+    this.cachedEvaluatedInstances.length = 0;
+    this.dirtyFlags |= EngineDirtyFlags.DIRTY_ALL;
     for (const c of ir.clips) {
       this.addClip(c);
     }
