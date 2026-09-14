@@ -790,22 +790,32 @@ export class Engine {
     const floatsPerInst = 20;
     const totalFloats = count * floatsPerInst;
 
-    if (!this.jsEvaluatedBuffer || this.jsEvaluatedBuffer.length < totalFloats) {
+    if (
+      !this.jsEvaluatedBuffer ||
+      this.jsEvaluatedBuffer.length !== totalFloats ||
+      !this.jsEvaluatedUintBuffer ||
+      this.jsEvaluatedUintBuffer.length !== totalFloats
+    ) {
       this.jsEvaluatedBuffer = globalBufferPool.acquireFloat32Array(totalFloats);
+      if (this.jsEvaluatedBuffer.length !== totalFloats) {
+        this.jsEvaluatedBuffer = this.jsEvaluatedBuffer.subarray(0, totalFloats);
+      }
       this.jsEvaluatedUintBuffer = globalBufferPool.acquireUint32Array(
         this.jsEvaluatedBuffer.buffer,
         this.jsEvaluatedBuffer.byteOffset,
         totalFloats
       );
+      if (this.jsEvaluatedUintBuffer.length !== totalFloats) {
+        this.jsEvaluatedUintBuffer = new Uint32Array(
+          this.jsEvaluatedBuffer.buffer,
+          this.jsEvaluatedBuffer.byteOffset,
+          totalFloats
+        );
+      }
       this.dirtyFlags |= EngineDirtyFlags.DIRTY_INSTANCES;
     }
-    const floatView = totalFloats === this.jsEvaluatedBuffer.length
-      ? this.jsEvaluatedBuffer
-      : this.jsEvaluatedBuffer.subarray(0, totalFloats);
-
-    const uintView = (this.jsEvaluatedUintBuffer && totalFloats === this.jsEvaluatedUintBuffer.length)
-      ? this.jsEvaluatedUintBuffer
-      : globalBufferPool.acquireUint32Array(floatView.buffer, floatView.byteOffset, totalFloats);
+    const floatView = this.jsEvaluatedBuffer;
+    const uintView = this.jsEvaluatedUintBuffer;
 
     if (this.dirtyFlags & EngineDirtyFlags.DIRTY_TIMELINE) {
       if (this.rootTimeline) {
@@ -1005,7 +1015,7 @@ export class Engine {
 
     if (needsRebuild) {
       const pooledInstances = globalInstancePool.acquire(count);
-      this.cachedEvaluatedInstances = pooledInstances.slice(0, count);
+      this.cachedEvaluatedInstances.length = count;
       if (this.cachedSubarrays.length !== count) {
         this.cachedSubarrays = new Array(count);
       }
@@ -1014,13 +1024,14 @@ export class Engine {
         const transformMatrix = floatView.subarray(offset, offset + 16);
         this.cachedSubarrays[i] = transformMatrix;
         const instData = this.instances[i];
-        const item = this.cachedEvaluatedInstances[i];
+        const item = pooledInstances[i];
         item.id = instData?.id;
         item.clipId = instData?.clip_id;
         item.transformMatrix = transformMatrix;
         item.opacity = 1.0;
         item.visible = true;
         item.clipIndex = 0;
+        this.cachedEvaluatedInstances[i] = item;
       }
     }
 
