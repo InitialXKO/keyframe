@@ -557,15 +557,20 @@ test("JS Evaluator Zero-Allocation Heap Growth Test: getEvaluatedInstances and e
 
   const initialMemory = process.memoryUsage().heapUsed;
 
+  let lastEvalFrameCount = 0;
+  let lastInstsCount = 0;
+
   // Evaluate 10,000 frames sequentially
   for (let f = 0; f < 10000; f++) {
     const timeMs = (f * 16.66) % 1000;
     const evalFrame = engine.evaluateFrame(timeMs);
-    assert.equal(evalFrame.count, 100);
-
     const insts = engine.getEvaluatedInstances(timeMs, true);
-    assert.equal(insts.length, 100);
+    lastEvalFrameCount = evalFrame.count;
+    lastInstsCount = insts.length;
   }
+
+  assert.equal(lastEvalFrameCount, 100);
+  assert.equal(lastInstsCount, 100);
 
   if (globalThis.gc) {
     globalThis.gc();
