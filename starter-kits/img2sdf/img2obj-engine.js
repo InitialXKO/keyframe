@@ -1,5 +1,5 @@
 /**
- * img2obj Engine Port for @keyframe/sdf
+ * img2obj Engine Port for @keyframe-engine/sdf
  * Ports vinhhien112/img2obj ObjectSculptSpec contract & CSG raymarching compiler
  */
 

@@ -1,7 +1,7 @@
 {
-  "name": "@keyframe/three",
+  "name": "@keyframe-engine/three",
   "version": "1.0.0",
-  "description": "@keyframe/three — Three.js Binding Adapter",
+  "description": "@keyframe-engine/three \u2014 Three.js Binding Adapter",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -10,7 +10,10 @@
     "build": "tsc"
   },
   "peerDependencies": {
-    "@keyframe/core": "^1.0.0",
+    "@keyframe-engine/core": "workspace:*",
     "three": "^0.150.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

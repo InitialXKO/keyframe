@@ -953,7 +953,7 @@ export function Toolbar() {
           <DialogHeader>
             <DialogTitle>Remotion 兼容代码</DialogTitle>
             <DialogDescription>
-              基于 @keyframe/core 的 Remotion 兼容层（spring / interpolate / Sequence）生成
+              基于 @keyframe-engine/core 的 Remotion 兼容层（spring / interpolate / Sequence）生成
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-96 rounded-md border border-zinc-800 bg-black/60">

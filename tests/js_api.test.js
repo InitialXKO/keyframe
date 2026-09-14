@@ -458,7 +458,7 @@ test("Engine.prepare() compatibility validation and unprepared guardrail", async
   }, (err) => {
     assert.ok(err instanceof TypeError);
     assert.match(err.message, /Clip "bad_mass" keyframe at t=0 uses spring mass=2\.0/);
-    assert.match(err.message, /Use @keyframe\/physics for real-time interactive springs/);
+    assert.match(err.message, /Use @keyframe-engine\/physics for real-time interactive springs/);
     return true;
   });
 
@@ -472,7 +472,7 @@ test("Engine.prepare() compatibility validation and unprepared guardrail", async
   await assert.rejects(async () => {
     await extrapolateEngine.prepare();
   }, (err) => {
-    assert.match(err.message, /Clip "bad_extrapolate" keyframe at t=0 uses extrapolate, but WASM core does not support extrapolate\. To fix, choose one: → Remove extrapolate and clamp input manually → Use @keyframe\/bake to pre-bake this clip/);
+    assert.match(err.message, /Clip "bad_extrapolate" keyframe at t=0 uses extrapolate, but WASM core does not support extrapolate\. To fix, choose one: → Remove extrapolate and clamp input manually → Use @keyframe-engine\/bake to pre-bake this clip/);
     return true;
   });
 

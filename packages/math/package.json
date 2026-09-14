@@ -1,7 +1,7 @@
 {
-  "name": "@keyframe/math",
+  "name": "@keyframe-engine/math",
   "version": "1.0.0",
-  "description": "@keyframe/math — Hierarchy Resolver & Matrix Cascading Math Tools",
+  "description": "@keyframe-engine/math \u2014 Hierarchy Resolver & Matrix Cascading Math Tools",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -10,6 +10,9 @@
     "build": "tsc"
   },
   "peerDependencies": {
-    "@keyframe/core": "^1.0.0"
+    "@keyframe-engine/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

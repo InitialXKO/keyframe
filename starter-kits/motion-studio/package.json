@@ -1,5 +1,5 @@
 {
-  "name": "@keyframe/starter-kit-motion-studio",
+  "name": "@keyframe-engine/starter-kit-motion-studio",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -9,10 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@keyframe/core": "^1.0.0",
-    "@keyframe/controller": "^1.0.0",
-    "@keyframe/dom": "^1.0.0",
-    "@keyframe/physics": "^1.0.0",
+    "@keyframe-engine/core": "^1.0.0",
+    "@keyframe-engine/controller": "^1.0.0",
+    "@keyframe-engine/dom": "^1.0.0",
+    "@keyframe-engine/physics": "^1.0.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

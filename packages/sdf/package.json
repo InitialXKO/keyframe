@@ -1,7 +1,7 @@
 {
-  "name": "@keyframe/sdf",
+  "name": "@keyframe-engine/sdf",
   "version": "1.0.0",
-  "description": "@keyframe/sdf — SDF Raymarching Engine & CSG Primitive Keyframe Bridge",
+  "description": "@keyframe-engine/sdf \u2014 SDF Raymarching Engine & CSG Primitive Keyframe Bridge",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -14,5 +14,8 @@
   },
   "scripts": {
     "build": "tsc"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

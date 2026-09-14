@@ -7,7 +7,7 @@ import type { SdfScene, SdfPrim } from './scene.js';
 
 /**
  * Keyframe Engine 实例接口（Zero-Copy ABI）
- * 实际类型来自 @keyframe/core，这里只声明必要接口
+ * 实际类型来自 @keyframe-engine/core，这里只声明必要接口
  */
 export interface IKeyframeEngine {
   prepared?: boolean;

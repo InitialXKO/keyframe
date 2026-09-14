@@ -1,7 +1,7 @@
 {
-  "name": "@keyframe/webgpu",
+  "name": "@keyframe-engine/webgpu",
   "version": "1.0.0",
-  "description": "@keyframe/webgpu — WebGPU Direct-Write Adapter",
+  "description": "@keyframe-engine/webgpu \u2014 WebGPU Direct-Write Adapter",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -10,6 +10,9 @@
     "build": "tsc"
   },
   "peerDependencies": {
-    "@keyframe/core": "^1.0.0"
+    "@keyframe-engine/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

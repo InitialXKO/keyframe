@@ -470,8 +470,8 @@ export function makeDemoScene(stage: { w: number; h: number }): SceneData {
 
 export function sceneToRemotionCode(scene: SceneData): string {
   const lines: string[] = [];
-  lines.push(`// 由 KeyForge Motion Studio 生成 — 兼容 @keyframe/core Remotion 兼容层`);
-  lines.push(`import { AbsoluteFill, Sequence, spring, interpolate, useCurrentFrame, useVideoConfig } from "@keyframe/core";`);
+  lines.push(`// 由 KeyForge Motion Studio 生成 — 兼容 @keyframe-engine/core Remotion 兼容层`);
+  lines.push(`import { AbsoluteFill, Sequence, spring, interpolate, useCurrentFrame, useVideoConfig } from "@keyframe-engine/core";`);
   lines.push("");
   lines.push(`export const durationInFrames = ${Math.ceil(scene.durationMs / (1000 / 30))}; // ${scene.durationMs}ms @30fps`);
   lines.push("");

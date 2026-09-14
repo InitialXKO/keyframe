@@ -1,7 +1,7 @@
 {
-  "name": "@keyframe/controller",
+  "name": "@keyframe-engine/controller",
   "version": "1.0.0",
-  "description": "@keyframe/controller — Standard Animation Playback Controller",
+  "description": "@keyframe-engine/controller \u2014 Standard Animation Playback Controller",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -10,6 +10,9 @@
     "build": "tsc"
   },
   "peerDependencies": {
-    "@keyframe/core": "^1.0.0"
+    "@keyframe-engine/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
