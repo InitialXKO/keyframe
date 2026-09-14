@@ -1,5 +1,5 @@
 /**
- * WASM Dual-Rail Loader for @keyframe/core
+ * WASM Dual-Rail Loader for @keyframe-engine/core
  * Track A (Default): WASM bundler target / inlined module for Webpack/Vite zero-config.
  * Track B (High Performance): WASM web target / initSync(fetch()) for off-main-thread async loading.
  */

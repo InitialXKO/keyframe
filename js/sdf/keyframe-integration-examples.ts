@@ -11,7 +11,7 @@
  */
 async function example1_basicIntegration() {
   // 1. 导入（实际项目中从对应包导入）
-  // import { Engine, Clip, Keyframe, TransformBuilder, BlendMode } from '@keyframe/core';
+  // import { Engine, Clip, Keyframe, TransformBuilder, BlendMode } from '@keyframe-engine/core';
   // import { SdfEngine } from './engine';
   // import { PRESETS } from './scene';
 

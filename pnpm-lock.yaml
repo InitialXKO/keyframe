@@ -1,0 +1,72 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/controller:
+    dependencies:
+      '@keyframe-engine/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/core: {}
+
+  packages/dom:
+    dependencies:
+      '@keyframe-engine/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/math:
+    dependencies:
+      '@keyframe-engine/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/physics:
+    dependencies:
+      '@keyframe-engine/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/sdf: {}
+
+  packages/three:
+    dependencies:
+      '@keyframe-engine/core':
+        specifier: workspace:*
+        version: link:../core
+      three:
+        specifier: ^0.150.0
+        version: 0.150.1
+
+  packages/webgpu:
+    dependencies:
+      '@keyframe-engine/core':
+        specifier: workspace:*
+        version: link:../core
+
+packages:
+
+  three@0.150.1:
+    resolution: {integrity: sha512-5C1MqKUWaHYo13BX0Q64qcdwImgnnjSOFgBscOzAo8MYCzEtqfQqorEKMcajnA3FHy1yVlIe9AmaMQ0OQracNA==}
+
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+snapshots:
+
+  three@0.150.1: {}
+
+  typescript@5.9.3: {}

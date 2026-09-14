@@ -345,12 +345,12 @@ export class Engine {
             for (const kf of clip.keyframes) {
                 if (kf.springConfig && kf.springConfig.mass !== undefined && kf.springConfig.mass !== 1.0) {
                     const massStr = Number.isInteger(kf.springConfig.mass) ? kf.springConfig.mass.toFixed(1) : kf.springConfig.mass.toString();
-                    throw new TypeError(`[KeyframeEngine] Clip "${clip.id}" keyframe at t=${kf.time} uses spring mass=${massStr}.\nWASM core only supports mass=1.0 for batch evaluation.\n\nTo resolve:\n  1. Bake the animation via engine.bakeRange(), then use baked data (recommended for video/offline rendering).\n  2. Use @keyframe/physics for real-time interactive springs (max ~200 instances).\n  3. Set mass to 1.0 to match WASM behavior.`);
+                    throw new TypeError(`[KeyframeEngine] Clip "${clip.id}" keyframe at t=${kf.time} uses spring mass=${massStr}.\nWASM core only supports mass=1.0 for batch evaluation.\n\nTo resolve:\n  1. Bake the animation via engine.bakeRange(), then use baked data (recommended for video/offline rendering).\n  2. Use @keyframe-engine/physics for real-time interactive springs (max ~200 instances).\n  3. Set mass to 1.0 to match WASM behavior.`);
                 }
                 if (kf.interpolateConfig) {
                     const cfg = kf.interpolateConfig;
                     if (cfg.extrapolate || cfg.extrapolateLeft || cfg.extrapolateRight) {
-                        throw new Error(`Clip "${clip.id}" keyframe at t=${kf.time} uses extrapolate, but WASM core does not support extrapolate. To fix, choose one: → Remove extrapolate and clamp input manually → Use @keyframe/bake to pre-bake this clip`);
+                        throw new Error(`Clip "${clip.id}" keyframe at t=${kf.time} uses extrapolate, but WASM core does not support extrapolate. To fix, choose one: → Remove extrapolate and clamp input manually → Use @keyframe-engine/bake to pre-bake this clip`);
                     }
                 }
             }
@@ -363,7 +363,7 @@ export class Engine {
         // Stage 2: WASM loading (if no existing instance)
         if (!this.wasmInstance) {
             options?.onProgress?.("wasm_loading");
-            const url = options?.wasmUrl || "https://cdn.jsdelivr.net/npm/@keyframe/core/pkg/keyframe_engine_bg.wasm";
+            const url = options?.wasmUrl || "https://cdn.jsdelivr.net/npm/@keyframe-engine/core/pkg/keyframe_engine_bg.wasm";
             const loadPromise = (async () => {
                 let instance = null;
                 let exports = null;

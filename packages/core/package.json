@@ -1,7 +1,7 @@
 {
-  "name": "@keyframe/core",
+  "name": "@keyframe-engine/core",
   "version": "1.0.0",
-  "description": "@keyframe/core — WASM Kernel & Low-Level Math Computation",
+  "description": "@keyframe-engine/core \u2014 WASM Kernel & Low-Level Math Computation",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -18,5 +18,8 @@
   },
   "scripts": {
     "build": "tsc"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

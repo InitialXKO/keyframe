@@ -100,7 +100,7 @@ test("RealTimeSpring: Performance guardrail warning (>200 instances)", () => {
     assert.equal(RealTimeSpring.getActiveInstanceCount(), 205);
     assert.ok(warnings.length > 0, "Console warning should be triggered when instances > 200");
     assert.ok(
-      warnings.some((msg) => msg.includes("[@keyframe/physics] Large number of live springs (>200)")),
+      warnings.some((msg) => msg.includes("[@keyframe-engine/physics] Large number of live springs (>200)")),
       "Warning message should match performance guardrail spec"
     );
   } finally {
@@ -108,7 +108,7 @@ test("RealTimeSpring: Performance guardrail warning (>200 instances)", () => {
   }
 });
 
-test("Engine.prepare() error guidance when mass !== 1.0 references @keyframe/physics", async () => {
+test("Engine.prepare() error guidance when mass !== 1.0 references @keyframe-engine/physics", async () => {
   const engine = new Engine();
   const badClip = new Clip("heavy_spring_clip")
     .duration(1000)
@@ -124,7 +124,7 @@ test("Engine.prepare() error guidance when mass !== 1.0 references @keyframe/phy
       assert.ok(err instanceof TypeError, "Should throw TypeError");
       assert.match(err.message, /\[KeyframeEngine\] Clip "heavy_spring_clip" keyframe at t=0 uses spring mass=2\.5/);
       assert.match(err.message, /WASM core only supports mass=1\.0/);
-      assert.match(err.message, /Use @keyframe\/physics for real-time interactive springs/);
+      assert.match(err.message, /Use @keyframe-engine\/physics for real-time interactive springs/);
       return true;
     }
   );

@@ -25,7 +25,7 @@ export class RealTimeSpring {
     RealTimeSpring.activeInstanceCount++;
     if (RealTimeSpring.activeInstanceCount > 200) {
       console.warn(
-        "[@keyframe/physics] Large number of live springs (>200). Consider using baked physics or reducing update frequency."
+        "[@keyframe-engine/physics] Large number of live springs (>200). Consider using baked physics or reducing update frequency."
       );
     }
   }

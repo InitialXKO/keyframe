@@ -1,5 +1,5 @@
 // ============================================================
-// @keyframe/sdf — SDF Raymarching & Keyframe Bridge Module
+// @keyframe-engine/sdf — SDF Raymarching & Keyframe Bridge Module
 // ============================================================
 
 export * from './scene.js';

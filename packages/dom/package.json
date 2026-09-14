@@ -1,7 +1,7 @@
 {
-  "name": "@keyframe/dom",
+  "name": "@keyframe-engine/dom",
   "version": "1.0.0",
-  "description": "@keyframe/dom — DOM & CSS Matrix3d Binder Adapter",
+  "description": "@keyframe-engine/dom \u2014 DOM & CSS Matrix3d Binder Adapter",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -10,6 +10,9 @@
     "build": "tsc"
   },
   "peerDependencies": {
-    "@keyframe/core": "^1.0.0"
+    "@keyframe-engine/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
