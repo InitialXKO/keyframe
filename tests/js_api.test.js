@@ -583,6 +583,60 @@ test("JS Evaluator Zero-Allocation Heap Growth Test: getEvaluatedInstances and e
   assert.ok(growthBytes < 1024 * 1024, `Heap growth too large: ${growthBytes} bytes`);
 });
 
+test("JS Evaluator Zero-Allocation Heap Growth Test: Dynamic instance array length changes", async () => {
+  const engine = new Engine();
+  const clip = new Clip("c1")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+  engine.addClip(clip);
+
+  // Pre-create a pool of 100 instances
+  const allInstances = [];
+  for (let i = 0; i < 100; i++) {
+    allInstances.push(new Instance("c1", `inst_${i}`));
+  }
+
+  // Set initial 100 instances and mark engine prepared
+  engine.addInstances(allInstances);
+  engine.prepared = true;
+
+  // Warm up engine
+  engine.evaluateFrame(0);
+  engine.getEvaluatedInstances(0, true);
+  if (globalThis.gc) {
+    globalThis.gc();
+  }
+
+  const initialMemory = process.memoryUsage().heapUsed;
+
+  // Evaluate 10,000 frames with dynamic instance counts (fluctuating between 10, 50, and 100 instances)
+  const sizes = [10, 50, 100];
+  for (let f = 0; f < 10000; f++) {
+    const timeMs = (f * 16.66) % 1000;
+    const targetSize = sizes[f % sizes.length];
+
+    // Dynamically change instance array length
+    engine.instances = allInstances.slice(0, targetSize);
+
+    const evalFrame = engine.evaluateFrame(timeMs);
+    const insts = engine.getEvaluatedInstances(timeMs, true);
+
+    assert.equal(evalFrame.count, targetSize);
+    assert.equal(insts.length, targetSize);
+  }
+
+  if (globalThis.gc) {
+    globalThis.gc();
+  }
+
+  const finalMemory = process.memoryUsage().heapUsed;
+  const growthBytes = finalMemory - initialMemory;
+
+  assert.ok(growthBytes < 1024 * 1024, `Heap growth too large under dynamic array length changes: ${growthBytes} bytes`);
+});
+
 test("Engine zero-copy ABI: JS fallback mode packs instances in contiguous buffer view", async () => {
   const engine = new Engine();
   const clip = new Clip("c1").duration(1000);
