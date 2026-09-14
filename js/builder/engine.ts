@@ -214,6 +214,16 @@ function normalizeQuatTo(q: [number, number, number, number], out: [number, numb
 const scratchQ1: [number, number, number, number] = [0, 0, 0, 1];
 const scratchQ2: [number, number, number, number] = [0, 0, 0, 1];
 
+function isAdditiveBlendMode(bm?: BlendMode | string): boolean {
+  if (!bm) return false;
+  if (bm === BlendMode.Additive || bm === "additive" || bm === "lighter") return true;
+  if (typeof bm === "string") {
+    const s = bm.toLowerCase();
+    return s === "additive" || s === "lighter";
+  }
+  return false;
+}
+
 function slerpQuatTo(
   a: [number, number, number, number],
   b: [number, number, number, number],
@@ -492,6 +502,8 @@ export class Engine {
   private prepared = false;
   private opfsStorage: OPFSStorage = new OPFSStorage();
   private jsEvaluatedBuffer?: Float32Array;
+  private jsEvaluatedUintBuffer?: Uint32Array;
+  private instanceAdditiveMap = new WeakMap<InstanceData, boolean>();
   private lastEvaluatedFrameResult?: EvaluatedFrameResult;
 
   private scratchInitialMat = new Float32Array(16);
@@ -580,6 +592,7 @@ export class Engine {
   public addInstances(instances: (Instance | InstanceData)[]): this {
     for (const inst of instances) {
       const data = inst instanceof Instance ? inst.build() : inst;
+      this.instanceAdditiveMap.set(data, isAdditiveBlendMode(data.blend_mode));
       this.instances.push(data);
       if (this.wasmInstance) {
         this.wasmInstance.add_instance_json(JSON.stringify(data));
@@ -733,10 +746,23 @@ export class Engine {
     const len = this.wasmInstance.get_instance_buffer_byte_length() ?? (count * 80);
     const floatsPerInst = 20;
     const memoryBuffer: ArrayBuffer = memory.buffer;
-    const floatView = new Float32Array(memoryBuffer, ptr, count * floatsPerInst);
-    const uintView = new Uint32Array(memoryBuffer, ptr, count * floatsPerInst);
 
-    if (!this.cachedFrameResult) {
+    let floatView: Float32Array;
+    let uintView: Uint32Array;
+
+    if (
+      this.cachedFrameResult &&
+      this.cachedFrameResult.view &&
+      this.cachedFrameResult.view.buffer === memoryBuffer &&
+      this.cachedFrameResult.ptr === ptr &&
+      this.cachedFrameResult.count === count &&
+      this.cachedFrameResult.uintView
+    ) {
+      floatView = this.cachedFrameResult.view;
+      uintView = this.cachedFrameResult.uintView;
+    } else {
+      floatView = new Float32Array(memoryBuffer, ptr, count * floatsPerInst);
+      uintView = new Uint32Array(memoryBuffer, ptr, count * floatsPerInst);
       this.cachedFrameResult = {
         view: floatView,
         uintView,
@@ -746,15 +772,15 @@ export class Engine {
         byteLength: len,
         floatsPerInstance: floatsPerInst,
       };
-    } else {
-      this.cachedFrameResult.view = floatView;
-      this.cachedFrameResult.uintView = uintView;
-      this.cachedFrameResult.count = count;
-      this.cachedFrameResult.ptr = ptr;
-      this.cachedFrameResult.byteOffset = ptr;
-      this.cachedFrameResult.byteLength = len;
-      this.cachedFrameResult.floatsPerInstance = floatsPerInst;
     }
+
+    this.cachedFrameResult.view = floatView;
+    this.cachedFrameResult.uintView = uintView;
+    this.cachedFrameResult.count = count;
+    this.cachedFrameResult.ptr = ptr;
+    this.cachedFrameResult.byteOffset = ptr;
+    this.cachedFrameResult.byteLength = len;
+    this.cachedFrameResult.floatsPerInstance = floatsPerInst;
 
     return this.cachedFrameResult;
   }
@@ -766,11 +792,17 @@ export class Engine {
 
     if (!this.jsEvaluatedBuffer || this.jsEvaluatedBuffer.length < totalFloats) {
       this.jsEvaluatedBuffer = new Float32Array(totalFloats);
+      this.jsEvaluatedUintBuffer = new Uint32Array(this.jsEvaluatedBuffer.buffer, 0, totalFloats);
       this.cachedSubarrays = undefined;
       this.cachedEvaluatedInstances = undefined;
     }
-    const floatView = this.jsEvaluatedBuffer.subarray(0, totalFloats);
-    const uintView = new Uint32Array(floatView.buffer, floatView.byteOffset, totalFloats);
+    const floatView = totalFloats === this.jsEvaluatedBuffer.length
+      ? this.jsEvaluatedBuffer
+      : this.jsEvaluatedBuffer.subarray(0, totalFloats);
+
+    const uintView = (this.jsEvaluatedUintBuffer && totalFloats === this.jsEvaluatedUintBuffer.length)
+      ? this.jsEvaluatedUintBuffer
+      : new Uint32Array(floatView.buffer, floatView.byteOffset, totalFloats);
 
     if (!this.cachedScheduledMap) {
       this.cachedScheduledMap = this.rootTimeline ? flattenTimeline(this.rootTimeline) : new Map<string, number>();
@@ -830,8 +862,11 @@ export class Engine {
       writeTransformToMatrix(inst.initial_transform ?? DEFAULT_TRANSFORM, this.scratchInitialMat, 0);
       writeTransformToMatrix(clipTransform, this.scratchClipMat, 0);
 
-      const blendModeStr = String(inst.blend_mode ?? BlendMode.Override).toLowerCase();
-      const isAdditive = blendModeStr === "additive" || blendModeStr === "lighter";
+      let isAdditive = this.instanceAdditiveMap.get(inst);
+      if (isAdditive === undefined) {
+        isAdditive = isAdditiveBlendMode(inst.blend_mode);
+        this.instanceAdditiveMap.set(inst, isAdditive);
+      }
       if (!isAdditive) {
         multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
       } else {
@@ -951,7 +986,8 @@ export class Engine {
       this.cachedEvaluatedInstances.length !== count ||
       !this.cachedSubarrays ||
       this.cachedSubarrays.length !== count ||
-      this.cachedSubarrays[0]?.buffer !== floatView.buffer
+      this.cachedSubarrays[0]?.buffer !== floatView.buffer ||
+      this.cachedSubarrays[0]?.byteOffset !== floatView.byteOffset
     ) {
       this.cachedSubarrays = new Array(count);
       this.cachedEvaluatedInstances = new Array(count);
@@ -1199,6 +1235,7 @@ export class Engine {
   public importIR(ir: EngineIR): void {
     this.clips.clear();
     this.instances = [];
+    this.instanceAdditiveMap = new WeakMap();
     this.cachedClipIndexMap = undefined;
     this.cachedScheduledMap = undefined;
     this.cachedSubarrays = undefined;
