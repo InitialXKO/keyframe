@@ -1006,41 +1006,35 @@ export class Engine {
     const uintView = evalResult.uintView;
     const floatsPerInst = evalResult.floatsPerInstance || 20;
 
-    const needsRebuild =
-      this.cachedEvaluatedInstances.length !== count ||
-      this.cachedSubarrays.length !== count ||
-      !this.cachedSubarrays[0] ||
-      this.cachedSubarrays[0].buffer !== floatView.buffer ||
-      this.cachedSubarrays[0].byteOffset !== floatView.byteOffset;
-
-    if (needsRebuild) {
-      const pooledInstances = globalInstancePool.acquire(count);
+    const pooledInstances = globalInstancePool.acquire(count);
+    if (this.cachedEvaluatedInstances.length !== count) {
       this.cachedEvaluatedInstances.length = count;
-      if (this.cachedSubarrays.length !== count) {
-        this.cachedSubarrays = new Array(count);
-      }
-      for (let i = 0; i < count; i++) {
-        const offset = i * floatsPerInst;
-        const transformMatrix = floatView.subarray(offset, offset + 16);
-        this.cachedSubarrays[i] = transformMatrix;
-        const instData = this.instances[i];
-        const item = pooledInstances[i];
-        item.id = instData?.id;
-        item.clipId = instData?.clip_id;
-        item.transformMatrix = transformMatrix;
-        item.opacity = 1.0;
-        item.visible = true;
-        item.clipIndex = 0;
-        this.cachedEvaluatedInstances[i] = item;
-      }
     }
 
     for (let i = 0; i < count; i++) {
       const offset = i * floatsPerInst;
+      const expectedByteOffset = floatView.byteOffset + offset * 4;
+
+      let transformMatrix = this.cachedSubarrays[i];
+      if (
+        !transformMatrix ||
+        transformMatrix.buffer !== floatView.buffer ||
+        transformMatrix.byteOffset !== expectedByteOffset
+      ) {
+        transformMatrix = floatView.subarray(offset, offset + 16);
+        this.cachedSubarrays[i] = transformMatrix;
+      }
+
       const instData = this.instances[i];
-      const item = this.cachedEvaluatedInstances[i];
+      let item = this.cachedEvaluatedInstances[i];
+      if (!item) {
+        item = pooledInstances[i];
+        this.cachedEvaluatedInstances[i] = item;
+      }
+
       item.id = instData?.id;
       item.clipId = instData?.clip_id;
+      item.transformMatrix = transformMatrix;
       item.opacity = floatView[offset + 16];
       item.visible = uintView ? uintView[offset + 17] === 1 : floatView[offset + 17] === 1;
       item.clipIndex = uintView ? uintView[offset + 18] : floatView[offset + 18];
