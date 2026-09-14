@@ -199,37 +199,47 @@ function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefin
   }
 }
 
-function normalizeQuat(q: [number, number, number, number]): [number, number, number, number] {
+function normalizeQuatTo(q: [number, number, number, number], out: [number, number, number, number]): void {
   const len = Math.hypot(q[0], q[1], q[2], q[3]);
   if (len < 1e-6) {
-    return [0, 0, 0, 1];
+    out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 1;
+    return;
   }
-  return [q[0] / len, q[1] / len, q[2] / len, q[3] / len];
+  out[0] = q[0] / len;
+  out[1] = q[1] / len;
+  out[2] = q[2] / len;
+  out[3] = q[3] / len;
 }
 
-function slerpQuat(
+const scratchQ1: [number, number, number, number] = [0, 0, 0, 1];
+const scratchQ2: [number, number, number, number] = [0, 0, 0, 1];
+
+function slerpQuatTo(
   a: [number, number, number, number],
   b: [number, number, number, number],
-  t: number
-): [number, number, number, number] {
-  let q1 = normalizeQuat(a);
-  let q2 = normalizeQuat(b);
+  t: number,
+  out: [number, number, number, number]
+): void {
+  normalizeQuatTo(a, scratchQ1);
+  normalizeQuatTo(b, scratchQ2);
 
-  let dot = q1[0] * q2[0] + q1[1] * q2[1] + q1[2] * q2[2] + q1[3] * q2[3];
+  let dot = scratchQ1[0] * scratchQ2[0] + scratchQ1[1] * scratchQ2[1] + scratchQ1[2] * scratchQ2[2] + scratchQ1[3] * scratchQ2[3];
 
   if (dot < 0) {
-    q2 = [-q2[0], -q2[1], -q2[2], -q2[3]];
+    scratchQ2[0] = -scratchQ2[0];
+    scratchQ2[1] = -scratchQ2[1];
+    scratchQ2[2] = -scratchQ2[2];
+    scratchQ2[3] = -scratchQ2[3];
     dot = -dot;
   }
 
   if (dot > 0.9995) {
-    const res: [number, number, number, number] = [
-      q1[0] + t * (q2[0] - q1[0]),
-      q1[1] + t * (q2[1] - q1[1]),
-      q1[2] + t * (q2[2] - q1[2]),
-      q1[3] + t * (q2[3] - q1[3]),
-    ];
-    return normalizeQuat(res);
+    scratchQ1[0] += t * (scratchQ2[0] - scratchQ1[0]);
+    scratchQ1[1] += t * (scratchQ2[1] - scratchQ1[1]);
+    scratchQ1[2] += t * (scratchQ2[2] - scratchQ1[2]);
+    scratchQ1[3] += t * (scratchQ2[3] - scratchQ1[3]);
+    normalizeQuatTo(scratchQ1, out);
+    return;
   }
 
   const theta0 = Math.acos(dot);
@@ -240,48 +250,42 @@ function slerpQuat(
   const s0 = Math.cos(theta) - (dot * sinTheta) / sinTheta0;
   const s1 = sinTheta / sinTheta0;
 
-  return [
-    s0 * q1[0] + s1 * q2[0],
-    s0 * q1[1] + s1 * q2[1],
-    s0 * q1[2] + s1 * q2[2],
-    s0 * q1[3] + s1 * q2[3],
-  ];
+  out[0] = s0 * scratchQ1[0] + s1 * scratchQ2[0];
+  out[1] = s0 * scratchQ1[1] + s1 * scratchQ2[1];
+  out[2] = s0 * scratchQ1[2] + s1 * scratchQ2[2];
+  out[3] = s0 * scratchQ1[3] + s1 * scratchQ2[3];
 }
 
-function interpolateTransform(a: TransformData, b: TransformData, factor: number): TransformData {
-  const translation: [number, number, number] = [
-    a.translation[0] + (b.translation[0] - a.translation[0]) * factor,
-    a.translation[1] + (b.translation[1] - a.translation[1]) * factor,
-    a.translation[2] + (b.translation[2] - a.translation[2]) * factor,
-  ];
+function interpolateTransformTo(a: TransformData, b: TransformData, factor: number, out: TransformData): void {
+  out.translation[0] = a.translation[0] + (b.translation[0] - a.translation[0]) * factor;
+  out.translation[1] = a.translation[1] + (b.translation[1] - a.translation[1]) * factor;
+  out.translation[2] = a.translation[2] + (b.translation[2] - a.translation[2]) * factor;
 
-  const scale: [number, number, number] = [
-    a.scale[0] + (b.scale[0] - a.scale[0]) * factor,
-    a.scale[1] + (b.scale[1] - a.scale[1]) * factor,
-    a.scale[2] + (b.scale[2] - a.scale[2]) * factor,
-  ];
+  out.scale[0] = a.scale[0] + (b.scale[0] - a.scale[0]) * factor;
+  out.scale[1] = a.scale[1] + (b.scale[1] - a.scale[1]) * factor;
+  out.scale[2] = a.scale[2] + (b.scale[2] - a.scale[2]) * factor;
 
-  const origin: [number, number, number] = [
-    a.origin[0] + (b.origin[0] - a.origin[0]) * factor,
-    a.origin[1] + (b.origin[1] - a.origin[1]) * factor,
-    a.origin[2] + (b.origin[2] - a.origin[2]) * factor,
-  ];
+  out.origin[0] = a.origin[0] + (b.origin[0] - a.origin[0]) * factor;
+  out.origin[1] = a.origin[1] + (b.origin[1] - a.origin[1]) * factor;
+  out.origin[2] = a.origin[2] + (b.origin[2] - a.origin[2]) * factor;
 
-  const rotation_quat = slerpQuat(a.rotation_quat, b.rotation_quat, factor);
-
-  return { translation, rotation_quat, scale, origin };
+  slerpQuatTo(a.rotation_quat, b.rotation_quat, factor, out.rotation_quat);
 }
+
+const DEFAULT_TRANSFORM: TransformData = Object.freeze({
+  translation: [0, 0, 0] as [number, number, number],
+  rotation_quat: [0, 0, 0, 1] as [number, number, number, number],
+  scale: [1, 1, 1] as [number, number, number],
+  origin: [0, 0, 0] as [number, number, number],
+});
 
 function getDefaultTransform(): TransformData {
-  return {
-    translation: [0, 0, 0],
-    rotation_quat: [0, 0, 0, 1],
-    scale: [1, 1, 1],
-    origin: [0, 0, 0],
-  };
+  return DEFAULT_TRANSFORM;
 }
 
-function transformToMatrix(t: TransformData): Float32Array {
+const scratchQuatNorm: [number, number, number, number] = [0, 0, 0, 1];
+
+function writeTransformToMatrix(t: TransformData, out: Float32Array, outOffset = 0): void {
   const tx = t.translation[0];
   const ty = t.translation[1];
   const tz = t.translation[2];
@@ -290,13 +294,16 @@ function transformToMatrix(t: TransformData): Float32Array {
   const oy = t.origin[1];
   const oz = t.origin[2];
 
-  const [qx, qy, qz, qw] = normalizeQuat(t.rotation_quat);
+  normalizeQuatTo(t.rotation_quat, scratchQuatNorm);
+  const qx = scratchQuatNorm[0];
+  const qy = scratchQuatNorm[1];
+  const qz = scratchQuatNorm[2];
+  const qw = scratchQuatNorm[3];
 
   const sx = t.scale[0];
   const sy = t.scale[1];
   const sz = t.scale[2];
 
-  // Rotation matrix from quaternion
   const r00 = 1 - 2 * (qy * qy + qz * qz);
   const r01 = 2 * (qx * qy - qz * qw);
   const r02 = 2 * (qx * qz + qy * qw);
@@ -309,7 +316,6 @@ function transformToMatrix(t: TransformData): Float32Array {
   const r21 = 2 * (qy * qz + qx * qw);
   const r22 = 1 - 2 * (qx * qx + qy * qy);
 
-  // Rotation * Scale
   const rs00 = r00 * sx;
   const rs01 = r01 * sy;
   const rs02 = r02 * sz;
@@ -322,47 +328,76 @@ function transformToMatrix(t: TransformData): Float32Array {
   const rs21 = r21 * sy;
   const rs22 = r22 * sz;
 
-  // Translation * Origin * R * S * Origin^(-1)
-  // T_final = Translation + Origin - (R * S * Origin)
   const pos_x = tx + ox - (rs00 * ox + rs01 * oy + rs02 * oz);
   const pos_y = ty + oy - (rs10 * ox + rs11 * oy + rs12 * oz);
   const pos_z = tz + oz - (rs20 * ox + rs21 * oy + rs22 * oz);
 
-  // Return column-major 4x4 matrix
-  return new Float32Array([
-    rs00, rs10, rs20, 0,
-    rs01, rs11, rs21, 0,
-    rs02, rs12, rs22, 0,
-    pos_x, pos_y, pos_z, 1,
-  ]);
+  out[outOffset + 0] = rs00;   out[outOffset + 1] = rs10;   out[outOffset + 2] = rs20;   out[outOffset + 3] = 0;
+  out[outOffset + 4] = rs01;   out[outOffset + 5] = rs11;   out[outOffset + 6] = rs21;   out[outOffset + 7] = 0;
+  out[outOffset + 8] = rs02;   out[outOffset + 9] = rs12;   out[outOffset + 10] = rs22;  out[outOffset + 11] = 0;
+  out[outOffset + 12] = pos_x; out[outOffset + 13] = pos_y; out[outOffset + 14] = pos_z; out[outOffset + 15] = 1;
 }
 
-function multiplyMatrices(a: Float32Array, b: Float32Array): Float32Array {
-  const out = new Float32Array(16);
+function multiplyMatricesTo(
+  a: Float32Array,
+  aOffset: number,
+  b: Float32Array,
+  bOffset: number,
+  out: Float32Array,
+  outOffset: number
+): void {
   for (let col = 0; col < 4; col++) {
     for (let row = 0; row < 4; row++) {
-      out[col * 4 + row] =
-        a[0 * 4 + row] * b[col * 4 + 0] +
-        a[1 * 4 + row] * b[col * 4 + 1] +
-        a[2 * 4 + row] * b[col * 4 + 2] +
-        a[3 * 4 + row] * b[col * 4 + 3];
+      out[outOffset + col * 4 + row] =
+        a[aOffset + 0 * 4 + row] * b[bOffset + col * 4 + 0] +
+        a[aOffset + 1 * 4 + row] * b[bOffset + col * 4 + 1] +
+        a[aOffset + 2 * 4 + row] * b[bOffset + col * 4 + 2] +
+        a[aOffset + 3 * 4 + row] * b[bOffset + col * 4 + 3];
     }
   }
-  return out;
 }
 
-function evaluateClip(clip: AnimationClipData, localTime: number): { transform: TransformData; opacity: number } {
+function getSortedKeyframes(clip: AnimationClipData): KeyframeData[] {
+  let sorted = (clip as any)._sortedKeyframes as KeyframeData[] | undefined;
+  if (!sorted) {
+    sorted = clip.keyframes ? [...clip.keyframes].sort((a, b) => a.time - b.time) : [];
+    (clip as any)._sortedKeyframes = sorted;
+  }
+  return sorted;
+}
+
+interface ClipEvaluationResult {
+  transform: TransformData;
+  opacity: number;
+}
+
+const scratchClipTransform: TransformData = {
+  translation: [0, 0, 0],
+  rotation_quat: [0, 0, 0, 1],
+  scale: [1, 1, 1],
+  origin: [0, 0, 0],
+};
+
+const scratchClipResult: ClipEvaluationResult = {
+  transform: DEFAULT_TRANSFORM,
+  opacity: 1.0,
+};
+
+function evaluateClipTo(clip: AnimationClipData, localTime: number, outResult: ClipEvaluationResult): void {
   if (!clip.keyframes || clip.keyframes.length === 0) {
-    return { transform: getDefaultTransform(), opacity: 1.0 };
+    outResult.transform = DEFAULT_TRANSFORM;
+    outResult.opacity = 1.0;
+    return;
   }
 
-  if (clip.keyframes.length === 1) {
-    const kf = clip.keyframes[0];
-    return { transform: kf.transform ?? getDefaultTransform(), opacity: kf.opacity ?? 1.0 };
-  }
+  const sortedKeyframes = getSortedKeyframes(clip);
 
-  // Sort keyframes by time
-  const sortedKeyframes = [...clip.keyframes].sort((a, b) => a.time - b.time);
+  if (sortedKeyframes.length === 1) {
+    const kf = sortedKeyframes[0];
+    outResult.transform = kf.transform ?? DEFAULT_TRANSFORM;
+    outResult.opacity = kf.opacity ?? 1.0;
+    return;
+  }
 
   const duration = clip.duration;
   let effectiveTime = 0;
@@ -381,13 +416,17 @@ function evaluateClip(clip: AnimationClipData, localTime: number): { transform: 
 
   if (effectiveTime <= sortedKeyframes[0].time) {
     const kf = sortedKeyframes[0];
-    return { transform: kf.transform ?? getDefaultTransform(), opacity: kf.opacity ?? 1.0 };
+    outResult.transform = kf.transform ?? DEFAULT_TRANSFORM;
+    outResult.opacity = kf.opacity ?? 1.0;
+    return;
   }
 
   const lastIdx = sortedKeyframes.length - 1;
   if (effectiveTime >= sortedKeyframes[lastIdx].time) {
     const kf = sortedKeyframes[lastIdx];
-    return { transform: kf.transform ?? getDefaultTransform(), opacity: kf.opacity ?? 1.0 };
+    outResult.transform = kf.transform ?? DEFAULT_TRANSFORM;
+    outResult.opacity = kf.opacity ?? 1.0;
+    return;
   }
 
   for (let i = 0; i < lastIdx; i++) {
@@ -396,25 +435,28 @@ function evaluateClip(clip: AnimationClipData, localTime: number): { transform: 
     if (effectiveTime >= kfCurr.time && effectiveTime <= kfNext.time) {
       const segDuration = kfNext.time - kfCurr.time;
       if (segDuration <= 0.0001) {
-        return { transform: kfNext.transform ?? getDefaultTransform(), opacity: kfNext.opacity ?? 1.0 };
+        outResult.transform = kfNext.transform ?? DEFAULT_TRANSFORM;
+        outResult.opacity = kfNext.opacity ?? 1.0;
+        return;
       }
       const linearT = (effectiveTime - kfCurr.time) / segDuration;
       const easedT = evaluateEasing(kfCurr.easing ?? Easing.Linear, kfCurr.cubic_params, linearT);
 
-      const currTrans = kfCurr.transform ?? getDefaultTransform();
-      const nextTrans = kfNext.transform ?? getDefaultTransform();
+      const currTrans = kfCurr.transform ?? DEFAULT_TRANSFORM;
+      const nextTrans = kfNext.transform ?? DEFAULT_TRANSFORM;
       const currOpacity = kfCurr.opacity ?? 1.0;
       const nextOpacity = kfNext.opacity ?? 1.0;
 
-      const transform = interpolateTransform(currTrans, nextTrans, easedT);
-      const opacity = currOpacity + (nextOpacity - currOpacity) * easedT;
-
-      return { transform, opacity };
+      interpolateTransformTo(currTrans, nextTrans, easedT, scratchClipTransform);
+      outResult.transform = scratchClipTransform;
+      outResult.opacity = currOpacity + (nextOpacity - currOpacity) * easedT;
+      return;
     }
   }
 
   const kf = sortedKeyframes[lastIdx];
-  return { transform: kf.transform ?? getDefaultTransform(), opacity: kf.opacity ?? 1.0 };
+  outResult.transform = kf.transform ?? DEFAULT_TRANSFORM;
+  outResult.opacity = kf.opacity ?? 1.0;
 }
 
 function flattenTimeline(root: TimelineNodeData): Map<string, number> {
@@ -451,6 +493,13 @@ export class Engine {
   private opfsStorage: OPFSStorage = new OPFSStorage();
   private jsEvaluatedBuffer?: Float32Array;
   private lastEvaluatedFrameResult?: EvaluatedFrameResult;
+
+  private scratchInitialMat = new Float32Array(16);
+  private scratchClipMat = new Float32Array(16);
+  private cachedClipIndexMap?: Map<string, number>;
+  private cachedScheduledMap?: Map<string, number>;
+  private cachedEvaluatedInstances?: EvaluatedInstance[];
+  private cachedSubarrays?: Float32Array[];
 
   constructor(wasmInstance?: any) {
     this.wasmInstance = wasmInstance;
@@ -519,7 +568,9 @@ export class Engine {
 
   public addClip(clip: Clip | AnimationClipData): this {
     const data = clip instanceof Clip ? clip.build() : clip;
+    delete (data as any)._sortedKeyframes;
     this.clips.set(data.id, data);
+    this.cachedClipIndexMap = undefined;
     if (this.wasmInstance) {
       this.wasmInstance.add_clip_json(JSON.stringify(data));
     }
@@ -534,11 +585,14 @@ export class Engine {
         this.wasmInstance.add_instance_json(JSON.stringify(data));
       }
     }
+    this.cachedSubarrays = undefined;
+    this.cachedEvaluatedInstances = undefined;
     return this;
   }
 
   public setRootTimeline(node: TimelineNodeData): this {
     this.rootTimeline = node;
+    this.cachedScheduledMap = undefined;
     if (this.wasmInstance) {
       this.wasmInstance.set_root_timeline_json(JSON.stringify(node));
     }
@@ -662,6 +716,8 @@ export class Engine {
     this.prepared = true;
   }
 
+  private cachedFrameResult?: EvaluatedFrameResult;
+
   private evaluateWasmFrame(globalTime: number): EvaluatedFrameResult {
     const count = this.wasmInstance.evaluate_frame(globalTime);
     this.autoBindWasmMemory();
@@ -680,15 +736,27 @@ export class Engine {
     const floatView = new Float32Array(memoryBuffer, ptr, count * floatsPerInst);
     const uintView = new Uint32Array(memoryBuffer, ptr, count * floatsPerInst);
 
-    return {
-      view: floatView,
-      uintView,
-      count,
-      ptr,
-      byteOffset: ptr,
-      byteLength: len,
-      floatsPerInstance: floatsPerInst,
-    };
+    if (!this.cachedFrameResult) {
+      this.cachedFrameResult = {
+        view: floatView,
+        uintView,
+        count,
+        ptr,
+        byteOffset: ptr,
+        byteLength: len,
+        floatsPerInstance: floatsPerInst,
+      };
+    } else {
+      this.cachedFrameResult.view = floatView;
+      this.cachedFrameResult.uintView = uintView;
+      this.cachedFrameResult.count = count;
+      this.cachedFrameResult.ptr = ptr;
+      this.cachedFrameResult.byteOffset = ptr;
+      this.cachedFrameResult.byteLength = len;
+      this.cachedFrameResult.floatsPerInstance = floatsPerInst;
+    }
+
+    return this.cachedFrameResult;
   }
 
   private evaluateJSFrame(globalTime: number): EvaluatedFrameResult {
@@ -698,19 +766,28 @@ export class Engine {
 
     if (!this.jsEvaluatedBuffer || this.jsEvaluatedBuffer.length < totalFloats) {
       this.jsEvaluatedBuffer = new Float32Array(totalFloats);
+      this.cachedSubarrays = undefined;
+      this.cachedEvaluatedInstances = undefined;
     }
     const floatView = this.jsEvaluatedBuffer.subarray(0, totalFloats);
     const uintView = new Uint32Array(floatView.buffer, floatView.byteOffset, totalFloats);
 
-    const scheduledMap = this.rootTimeline ? flattenTimeline(this.rootTimeline) : new Map<string, number>();
-    const clipMap = this.clips;
-    const clipIndexMap = new Map<string, number>();
-    let clipIdxCounter = 0;
-    for (const [clipId] of clipMap) {
-      clipIndexMap.set(clipId, clipIdxCounter++);
+    if (!this.cachedScheduledMap) {
+      this.cachedScheduledMap = this.rootTimeline ? flattenTimeline(this.rootTimeline) : new Map<string, number>();
     }
+    const scheduledMap = this.cachedScheduledMap;
 
-    for (let i = 0; i < this.instances.length; i++) {
+    if (!this.cachedClipIndexMap) {
+      this.cachedClipIndexMap = new Map<string, number>();
+      let counter = 0;
+      for (const clipId of this.clips.keys()) {
+        this.cachedClipIndexMap.set(clipId, counter++);
+      }
+    }
+    const clipIndexMap = this.cachedClipIndexMap;
+    const clipMap = this.clips;
+
+    for (let i = 0; i < count; i++) {
       const inst = this.instances[i];
       const clip = clipMap.get(inst.clip_id);
       const clipIdx = clipIndexMap.get(inst.clip_id) ?? i;
@@ -746,28 +823,24 @@ export class Engine {
         localTime = elapsed / durationScale;
       }
 
-      const { transform: clipTransform, opacity: clipOpacity } = evaluateClip(clip, localTime);
+      evaluateClipTo(clip, localTime, scratchClipResult);
+      const clipTransform = scratchClipResult.transform;
+      const clipOpacity = scratchClipResult.opacity;
 
-      const initialMat = transformToMatrix(inst.initial_transform ?? getDefaultTransform());
-      const clipMat = transformToMatrix(clipTransform);
+      writeTransformToMatrix(inst.initial_transform ?? DEFAULT_TRANSFORM, this.scratchInitialMat, 0);
+      writeTransformToMatrix(clipTransform, this.scratchClipMat, 0);
 
-      let finalMat: Float32Array;
       const blendModeStr = String(inst.blend_mode ?? BlendMode.Override).toLowerCase();
       const isAdditive = blendModeStr === "additive" || blendModeStr === "lighter";
       if (!isAdditive) {
-        finalMat = multiplyMatrices(initialMat, clipMat);
+        multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
       } else {
-        // Additive blend mode: initial_mat + (clip_mat - Mat4::IDENTITY)
-        finalMat = new Float32Array(16);
         for (let k = 0; k < 16; k++) {
           const identityVal = k % 5 === 0 ? 1 : 0;
-          finalMat[k] = initialMat[k] + (clipMat[k] - identityVal);
+          floatView[offset + k] = this.scratchInitialMat[k] + (this.scratchClipMat[k] - identityVal);
         }
       }
 
-      for (let k = 0; k < 16; k++) {
-        floatView[offset + k] = finalMat[k];
-      }
       const instOpacity = inst.opacity ?? 1.0;
       floatView[offset + 16] = instOpacity * clipOpacity;
       uintView[offset + 17] = 1;
@@ -775,15 +848,27 @@ export class Engine {
       floatView[offset + 19] = 0;
     }
 
-    return {
-      view: floatView,
-      uintView,
-      count,
-      ptr: 0,
-      byteOffset: floatView.byteOffset,
-      byteLength: floatView.byteLength,
-      floatsPerInstance: floatsPerInst,
-    };
+    if (!this.cachedFrameResult) {
+      this.cachedFrameResult = {
+        view: floatView,
+        uintView,
+        count,
+        ptr: 0,
+        byteOffset: floatView.byteOffset,
+        byteLength: floatView.byteLength,
+        floatsPerInstance: floatsPerInst,
+      };
+    } else {
+      this.cachedFrameResult.view = floatView;
+      this.cachedFrameResult.uintView = uintView;
+      this.cachedFrameResult.count = count;
+      this.cachedFrameResult.ptr = 0;
+      this.cachedFrameResult.byteOffset = floatView.byteOffset;
+      this.cachedFrameResult.byteLength = floatView.byteLength;
+      this.cachedFrameResult.floatsPerInstance = floatsPerInst;
+    }
+
+    return this.cachedFrameResult;
   }
 
   /**
@@ -856,32 +941,49 @@ export class Engine {
       }
     }
 
-    const result: EvaluatedInstance[] = [];
     const count = evalResult.count;
     const floatView = evalResult.view;
     const uintView = evalResult.uintView;
     const floatsPerInst = evalResult.floatsPerInstance || 20;
 
-    for (let i = 0; i < count; i++) {
-      const offset = i * floatsPerInst;
-      // ZERO-COPY: Use subarray instead of slice to avoid creating extra Float32Array copies
-      const transformMatrix = floatView.subarray(offset, offset + 16);
-      const opacity = floatView[offset + 16];
-      const visible = uintView ? uintView[offset + 17] === 1 : floatView[offset + 17] === 1;
-      const clipIndex = uintView ? uintView[offset + 18] : floatView[offset + 18];
-      const instData = this.instances[i];
+    if (
+      !this.cachedEvaluatedInstances ||
+      this.cachedEvaluatedInstances.length !== count ||
+      !this.cachedSubarrays ||
+      this.cachedSubarrays.length !== count ||
+      this.cachedSubarrays[0]?.buffer !== floatView.buffer
+    ) {
+      this.cachedSubarrays = new Array(count);
+      this.cachedEvaluatedInstances = new Array(count);
 
-      result.push({
-        id: instData?.id,
-        clipId: instData?.clip_id,
-        transformMatrix,
-        opacity,
-        visible,
-        clipIndex,
-      });
+      for (let i = 0; i < count; i++) {
+        const offset = i * floatsPerInst;
+        const transformMatrix = floatView.subarray(offset, offset + 16);
+        this.cachedSubarrays[i] = transformMatrix;
+        const instData = this.instances[i];
+        this.cachedEvaluatedInstances[i] = {
+          id: instData?.id,
+          clipId: instData?.clip_id,
+          transformMatrix,
+          opacity: 1.0,
+          visible: true,
+          clipIndex: 0,
+        };
+      }
     }
 
-    return result;
+    for (let i = 0; i < count; i++) {
+      const offset = i * floatsPerInst;
+      const instData = this.instances[i];
+      const item = this.cachedEvaluatedInstances[i];
+      item.id = instData?.id;
+      item.clipId = instData?.clip_id;
+      item.opacity = floatView[offset + 16];
+      item.visible = uintView ? uintView[offset + 17] === 1 : floatView[offset + 17] === 1;
+      item.clipIndex = uintView ? uintView[offset + 18] : floatView[offset + 18];
+    }
+
+    return this.cachedEvaluatedInstances;
   }
 
   private notifyDevTools(globalTime: number, evaluatedInstances: EvaluatedInstance[]): void {
@@ -1097,6 +1199,10 @@ export class Engine {
   public importIR(ir: EngineIR): void {
     this.clips.clear();
     this.instances = [];
+    this.cachedClipIndexMap = undefined;
+    this.cachedScheduledMap = undefined;
+    this.cachedSubarrays = undefined;
+    this.cachedEvaluatedInstances = undefined;
     for (const c of ir.clips) {
       this.addClip(c);
     }
