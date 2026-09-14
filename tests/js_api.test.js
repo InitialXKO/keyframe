@@ -550,6 +550,7 @@ test("JS Evaluator Zero-Allocation Heap Growth Test: getEvaluatedInstances and e
 
   // Warm up engine and trigger garbage collection if supported
   engine.evaluateFrame(0);
+  engine.getEvaluatedInstances(0, true);
   if (globalThis.gc) {
     globalThis.gc();
   }
