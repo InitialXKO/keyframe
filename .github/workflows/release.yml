@@ -43,4 +43,4 @@ jobs:
       - name: Publish Monorepo
         run: pnpm run publish:monorepo
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
