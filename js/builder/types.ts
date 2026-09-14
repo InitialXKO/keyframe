@@ -29,6 +29,15 @@ export enum BlendMode {
   Additive = "Additive",
 }
 
+export enum EngineDirtyFlags {
+  CLEAN = 0,
+  DIRTY_CLIPS = 1 << 0,
+  DIRTY_INSTANCES = 1 << 1,
+  DIRTY_TIMELINE = 1 << 2,
+  DIRTY_EVALUATION = 1 << 3,
+  DIRTY_ALL = 0xFFFFFFFF,
+}
+
 export interface CubicBezierParams {
   p1x: number;
   p1y: number;
