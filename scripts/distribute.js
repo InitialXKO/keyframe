@@ -17,11 +17,10 @@ const copy = (packageName, source, destination = source) => {
   cpSync(from, to, { recursive: true });
 };
 
-// The root compiler emits the shared implementation into dist/. Copy each
-// package's public entry point and its local dependencies into the package
-// directory so npm/pnpm publish never relies on files outside the package.
 const files = {
   core: [
+    ["core.js"],
+    ["core.d.ts"],
     ["core.js", "index.js"],
     ["core.d.ts", "index.d.ts"],
     ["web.js"],
@@ -34,18 +33,14 @@ const files = {
     ["storage_adapter.js"],
     ["storage_adapter.d.ts"],
   ],
-  controller: [["controller.js", "index.js"], ["controller.d.ts", "index.d.ts"]],
-  three: [["adapters/three_adapter.js", "index.js"], ["adapters/three_adapter.d.ts", "index.d.ts"]],
-  webgpu: [
-    ["adapters/webgpu_adapter.js", "index.js"],
-    ["adapters/webgpu_adapter.d.ts", "index.d.ts"],
-    ["generated"],
-  ],
-  dom: [["dom_binder.js", "index.js"], ["dom_binder.d.ts", "index.d.ts"]],
-  math: [["math/hierarchy.js", "index.js"], ["math/hierarchy.d.ts", "index.d.ts"]],
+  controller: [["controller.js"], ["controller.d.ts"], ["controller.js", "index.js"], ["controller.d.ts", "index.d.ts"]],
+  three: [["adapters/three_adapter.js"], ["adapters/three_adapter.d.ts"]],
+  webgpu: [["adapters/webgpu_adapter.js"], ["adapters/webgpu_adapter.d.ts"], ["generated"]],
+  dom: [["dom_binder.js"], ["dom_binder.d.ts"], ["dom_binder.js", "index.js"], ["dom_binder.d.ts", "index.d.ts"]],
+  math: [["math/hierarchy.js"], ["math/hierarchy.d.ts"], ["math/hierarchy.js", "index.js"], ["math/hierarchy.d.ts", "index.d.ts"]],
   physics: [
-    ["physics/RealTimeSpring.js", "RealTimeSpring.js"],
-    ["physics/RealTimeSpring.d.ts", "RealTimeSpring.d.ts"],
+    ["physics/RealTimeSpring.js"],
+    ["physics/RealTimeSpring.d.ts"],
     ["physics/index.js"],
     ["physics/index.d.ts"],
   ],
