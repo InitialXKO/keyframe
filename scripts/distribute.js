@@ -39,12 +39,12 @@ const files = {
   dom: [["dom_binder.js"], ["dom_binder.d.ts"], ["dom_binder.js", "index.js"], ["dom_binder.d.ts", "index.d.ts"]],
   math: [["math/hierarchy.js"], ["math/hierarchy.d.ts"], ["math/hierarchy.js", "index.js"], ["math/hierarchy.d.ts", "index.d.ts"]],
   physics: [
-    ["physics/RealTimeSpring.js"],
-    ["physics/RealTimeSpring.d.ts"],
-    ["physics/index.js"],
-    ["physics/index.d.ts"],
+    ["physics/RealTimeSpring.js", "RealTimeSpring.js"],
+    ["physics/RealTimeSpring.d.ts", "RealTimeSpring.d.ts"],
+    ["physics/index.js", "index.js"],
+    ["physics/index.d.ts", "index.d.ts"],
   ],
-  sdf: [["sdf"]],
+  sdf: [["sdf", "."]],
 };
 
 for (const [packageName, entries] of Object.entries(files)) {

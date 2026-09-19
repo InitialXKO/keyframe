@@ -1,0 +1,40 @@
+export var Easing;
+(function (Easing) {
+    Easing["Linear"] = "Linear";
+    Easing["Ease"] = "Ease";
+    Easing["EaseIn"] = "EaseIn";
+    Easing["EaseOut"] = "EaseOut";
+    Easing["EaseInOut"] = "EaseInOut";
+    Easing["CubicBezier"] = "CubicBezier";
+    Easing["Step"] = "Step";
+    Easing["BounceIn"] = "BounceIn";
+    Easing["BounceOut"] = "BounceOut";
+    Easing["BounceInOut"] = "BounceInOut";
+    Easing["ElasticIn"] = "ElasticIn";
+    Easing["ElasticOut"] = "ElasticOut";
+    Easing["ElasticInOut"] = "ElasticInOut";
+    Easing["BackIn"] = "BackIn";
+    Easing["BackOut"] = "BackOut";
+    Easing["BackInOut"] = "BackInOut";
+    Easing["ExpoIn"] = "ExpoIn";
+    Easing["ExpoOut"] = "ExpoOut";
+    Easing["ExpoInOut"] = "ExpoInOut";
+    Easing["SineIn"] = "SineIn";
+    Easing["SineOut"] = "SineOut";
+    Easing["SineInOut"] = "SineInOut";
+    Easing["SpringEasing"] = "SpringEasing";
+})(Easing || (Easing = {}));
+export var BlendMode;
+(function (BlendMode) {
+    BlendMode["Override"] = "Override";
+    BlendMode["Additive"] = "Additive";
+})(BlendMode || (BlendMode = {}));
+export var EngineDirtyFlags;
+(function (EngineDirtyFlags) {
+    EngineDirtyFlags[EngineDirtyFlags["CLEAN"] = 0] = "CLEAN";
+    EngineDirtyFlags[EngineDirtyFlags["DIRTY_CLIPS"] = 1] = "DIRTY_CLIPS";
+    EngineDirtyFlags[EngineDirtyFlags["DIRTY_INSTANCES"] = 2] = "DIRTY_INSTANCES";
+    EngineDirtyFlags[EngineDirtyFlags["DIRTY_TIMELINE"] = 4] = "DIRTY_TIMELINE";
+    EngineDirtyFlags[EngineDirtyFlags["DIRTY_EVALUATION"] = 8] = "DIRTY_EVALUATION";
+    EngineDirtyFlags[EngineDirtyFlags["DIRTY_ALL"] = 4294967295] = "DIRTY_ALL";
+})(EngineDirtyFlags || (EngineDirtyFlags = {}));

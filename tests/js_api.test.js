@@ -611,14 +611,18 @@ test("JS Evaluator Zero-Allocation Heap Growth Test: Dynamic instance array leng
 
   const initialMemory = process.memoryUsage().heapUsed;
 
-  // Evaluate 10,000 frames with dynamic instance counts (fluctuating between 10, 50, and 100 instances)
+  // Pre-slice instances into fixed arrays to avoid array allocations during loop execution
   const sizes = [10, 50, 100];
+  const instanceSlices = sizes.map((s) => allInstances.slice(0, s));
+
+  // Evaluate 10,000 frames with dynamic instance counts (fluctuating between 10, 50, and 100 instances)
   for (let f = 0; f < 10000; f++) {
     const timeMs = (f * 16.66) % 1000;
-    const targetSize = sizes[f % sizes.length];
+    const sizeIndex = f % sizes.length;
+    const targetSize = sizes[sizeIndex];
 
-    // Dynamically change instance array length
-    engine.instances = allInstances.slice(0, targetSize);
+    // Dynamically change instance array length using pre-sliced arrays
+    engine.instances = instanceSlices[sizeIndex];
 
     const evalFrame = engine.evaluateFrame(timeMs);
     const insts = engine.getEvaluatedInstances(timeMs, true);
