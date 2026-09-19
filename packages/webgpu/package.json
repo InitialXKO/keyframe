@@ -1,11 +1,11 @@
 {
   "name": "@keyframe-engine/webgpu",
   "version": "1.0.0",
-  "description": "@keyframe-engine/webgpu \u2014 WebGPU Direct-Write Adapter",
+  "description": "@keyframe-engine/webgpu — WebGPU Direct-Write Adapter",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/adapters/webgpu_adapter.js",
+  "module": "./dist/adapters/webgpu_adapter.js",
+  "types": "./dist/adapters/webgpu_adapter.d.ts",
   "scripts": {
     "build": "tsc"
   },
