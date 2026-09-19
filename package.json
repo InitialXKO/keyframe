@@ -46,7 +46,7 @@
     "build:ts": "npm run build:shaders && tsc",
     "build:distribute": "node scripts/distribute.js",
     "build": "npm run build:shaders && npm run build:wasm && npm run build:ts && npm run build:distribute",
-    "publish:monorepo": "pnpm publish --filter @keyframe-engine/core --no-git-checks --force && pnpm publish --filter @keyframe-engine/controller --no-git-checks --force && pnpm publish --filter @keyframe-engine/three --no-git-checks --force && pnpm publish --filter @keyframe-engine/webgpu --no-git-checks --force && pnpm publish --filter @keyframe-engine/dom --no-git-checks --force && pnpm publish --filter @keyframe-engine/math --no-git-checks --force && pnpm publish --filter @keyframe-engine/physics --no-git-checks --force && pnpm publish --filter @keyframe-engine/sdf --no-git-checks --force",
+    "publish:monorepo": "pnpm publish --filter @keyframe-engine/core --no-git-checks && pnpm publish --filter @keyframe-engine/controller --no-git-checks && pnpm publish --filter @keyframe-engine/three --no-git-checks && pnpm publish --filter @keyframe-engine/webgpu --no-git-checks && pnpm publish --filter @keyframe-engine/dom --no-git-checks && pnpm publish --filter @keyframe-engine/math --no-git-checks && pnpm publish --filter @keyframe-engine/physics --no-git-checks && pnpm publish --filter @keyframe-engine/sdf --no-git-checks",
     "test:rs": "cargo test",
     "test:js": "node --expose-gc --test tests/**/*.test.js tests/**/*.test.mjs 2>/dev/null || node --expose-gc --test",
     "test": "npm run test:rs && npm run test:js"
