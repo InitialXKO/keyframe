@@ -37,6 +37,23 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Verify distributed packages
+        run: |
+          set -eux
+          test -f packages/core/dist/index.js
+          test -f packages/core/dist/index.d.ts
+          test -f packages/core/dist/core.js
+          test -f packages/core/dist/web.js
+          test -f packages/core/dist/builder/index.js
+          test -f packages/controller/dist/index.js
+          test -f packages/three/dist/adapters/three_adapter.js
+          test -f packages/webgpu/dist/adapters/webgpu_adapter.js
+          test -f packages/webgpu/dist/generated/shaders.js
+          test -f packages/dom/dist/index.js
+          test -f packages/math/dist/index.js
+          test -f packages/physics/dist/index.js
+          test -f packages/sdf/dist/index.js
+
       - name: Test
         run: pnpm run test
 
