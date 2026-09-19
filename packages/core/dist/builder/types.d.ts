@@ -81,6 +81,18 @@ export interface AnimationClipData {
     keyframes: KeyframeData[];
     metadata?: Record<string, any>;
 }
+export interface InstanceDependencyData {
+    target_instance_id: string;
+    trigger?: "onComplete" | "onStart" | "onKeyframe" | string;
+    keyframe_index?: number;
+    offset_ms?: number;
+}
+export interface TransformBindingData {
+    source_instance_id: string;
+    source_property: string;
+    target_property: string;
+    offset?: number;
+}
 export interface InstanceData {
     id: string;
     clip_id: string;
@@ -91,6 +103,8 @@ export interface InstanceData {
     time_remapping_speed?: number;
     blend_mode?: BlendMode | string;
     initial_transform: TransformData;
+    dependencies?: InstanceDependencyData[];
+    transform_bindings?: TransformBindingData[];
 }
 export interface TimelineNodeData {
     id: string;

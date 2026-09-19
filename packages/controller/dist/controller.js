@@ -1,3 +1,66 @@
+export class ApplyAligner {
+    player;
+    pendingBarriers = [];
+    constructor(player) {
+        this.player = player;
+    }
+    waitUntil(targetInstanceId, condition = { trigger: "onComplete" }) {
+        return {
+            then: (callback) => {
+                this.pendingBarriers.push({
+                    targetInstanceId,
+                    condition,
+                    callback,
+                });
+            },
+        };
+    }
+    checkBarriers(currentTimeMs) {
+        if (this.pendingBarriers.length === 0)
+            return;
+        const remainingBarriers = [];
+        const evaluatedList = this.player.engine?.getEvaluatedInstances
+            ? this.player.engine.getEvaluatedInstances(currentTimeMs, true)
+            : [];
+        for (const barrier of this.pendingBarriers) {
+            let released = false;
+            if (barrier.condition.timeMs !== undefined) {
+                if (currentTimeMs >= barrier.condition.timeMs) {
+                    released = true;
+                }
+            }
+            else {
+                const targetInst = evaluatedList.find((inst) => inst.id === barrier.targetInstanceId);
+                if (targetInst) {
+                    if (barrier.condition.trigger === "onComplete") {
+                        // Check if global time exceeded delay + duration
+                        const instData = this.player.engine.instances?.find((item) => item.id === barrier.targetInstanceId);
+                        const clipData = instData ? this.player.engine.clips?.get(instData.clip_id) : null;
+                        const delay = instData?.delay ?? 0;
+                        const duration = (clipData?.duration ?? 0) * (instData?.duration_scale || 1.0);
+                        if (currentTimeMs >= delay + duration) {
+                            released = true;
+                        }
+                    }
+                    else if (barrier.condition.trigger === "onStart") {
+                        const instData = this.player.engine.instances?.find((item) => item.id === barrier.targetInstanceId);
+                        const delay = instData?.delay ?? 0;
+                        if (currentTimeMs >= delay) {
+                            released = true;
+                        }
+                    }
+                }
+            }
+            if (released) {
+                barrier.callback();
+            }
+            else {
+                remainingBarriers.push(barrier);
+            }
+        }
+        this.pendingBarriers = remainingBarriers;
+    }
+}
 export class AnimationPlayer {
     engine;
     fps;
@@ -9,6 +72,7 @@ export class AnimationPlayer {
     durationMs;
     listeners = new Map();
     timerId = null;
+    aligners = [];
     lastTimestamp = 0;
     audioBaseTime = null;
     adaptiveTimeScaleMultiplier = 1.0;
@@ -45,6 +109,11 @@ export class AnimationPlayer {
         }
         this.emit("seek", this.currentTimeMs);
         this.emit("frame", this.currentTimeMs);
+    }
+    createAligner() {
+        const aligner = new ApplyAligner(this);
+        this.aligners.push(aligner);
+        return aligner;
     }
     loop(enable = true) {
         this.isLooping = enable;
@@ -124,6 +193,9 @@ export class AnimationPlayer {
                     this.emit("ended");
                     return;
                 }
+            }
+            for (const aligner of this.aligners) {
+                aligner.checkBarriers(this.currentTimeMs);
             }
             this.emit("frame", this.currentTimeMs);
             this.timerId = setTimeout(tick, intervalMs);

@@ -8,6 +8,87 @@ export interface PlayerOptions {
 export type PlayerEvent = "frame" | "play" | "pause" | "ended" | "seek";
 export type PlayerListener = (...args: any[]) => void;
 
+export interface AlignerCondition {
+  trigger?: "onComplete" | "onStart" | "onKeyframe" | string;
+  keyframeIndex?: number;
+  timeMs?: number;
+}
+
+export class ApplyAligner {
+  private player: AnimationPlayer;
+  private pendingBarriers: {
+    targetInstanceId: string;
+    condition: AlignerCondition;
+    callback: () => void;
+  }[] = [];
+
+  constructor(player: AnimationPlayer) {
+    this.player = player;
+  }
+
+  public waitUntil(
+    targetInstanceId: string,
+    condition: AlignerCondition = { trigger: "onComplete" }
+  ): { then: (callback: () => void) => void } {
+    return {
+      then: (callback: () => void) => {
+        this.pendingBarriers.push({
+          targetInstanceId,
+          condition,
+          callback,
+        });
+      },
+    };
+  }
+
+  public checkBarriers(currentTimeMs: number): void {
+    if (this.pendingBarriers.length === 0) return;
+
+    const remainingBarriers: typeof this.pendingBarriers = [];
+    const evaluatedList = this.player.engine?.getEvaluatedInstances
+      ? this.player.engine.getEvaluatedInstances(currentTimeMs, true)
+      : [];
+
+    for (const barrier of this.pendingBarriers) {
+      let released = false;
+
+      if (barrier.condition.timeMs !== undefined) {
+        if (currentTimeMs >= barrier.condition.timeMs) {
+          released = true;
+        }
+      } else {
+        const targetInst = evaluatedList.find((inst: any) => inst.id === barrier.targetInstanceId);
+        if (targetInst) {
+          if (barrier.condition.trigger === "onComplete") {
+            // Check if global time exceeded delay + duration
+            const instData = this.player.engine.instances?.find((item: any) => item.id === barrier.targetInstanceId);
+            const clipData = instData ? this.player.engine.clips?.get(instData.clip_id) : null;
+            const delay = instData?.delay ?? 0;
+            const duration = (clipData?.duration ?? 0) * (instData?.duration_scale || 1.0);
+            if (currentTimeMs >= delay + duration) {
+              released = true;
+            }
+          } else if (barrier.condition.trigger === "onStart") {
+            const instData = this.player.engine.instances?.find((item: any) => item.id === barrier.targetInstanceId);
+            const delay = instData?.delay ?? 0;
+            if (currentTimeMs >= delay) {
+              released = true;
+            }
+          }
+        }
+      }
+
+      if (released) {
+        barrier.callback();
+      } else {
+        remainingBarriers.push(barrier);
+      }
+    }
+
+    this.pendingBarriers = remainingBarriers;
+  }
+}
+
 export class AnimationPlayer {
   public engine: any;
   public fps: number;
@@ -21,6 +102,7 @@ export class AnimationPlayer {
 
   private listeners: Map<PlayerEvent, Set<PlayerListener>> = new Map();
   private timerId: any = null;
+  private aligners: ApplyAligner[] = [];
   private lastTimestamp: number = 0;
   private audioBaseTime: number | null = null;
   private adaptiveTimeScaleMultiplier: number = 1.0;
@@ -61,6 +143,12 @@ export class AnimationPlayer {
     }
     this.emit("seek", this.currentTimeMs);
     this.emit("frame", this.currentTimeMs);
+  }
+
+  public createAligner(): ApplyAligner {
+    const aligner = new ApplyAligner(this);
+    this.aligners.push(aligner);
+    return aligner;
   }
 
   public loop(enable = true): void {
@@ -146,6 +234,10 @@ export class AnimationPlayer {
           this.emit("ended");
           return;
         }
+      }
+
+      for (const aligner of this.aligners) {
+        aligner.checkBarriers(this.currentTimeMs);
       }
 
       this.emit("frame", this.currentTimeMs);

@@ -519,6 +519,74 @@ function flattenTimelineToMap(root: TimelineNodeData, outMap: Map<string, number
   return outMap;
 }
 
+function resolveInstanceDelays(
+  instances: InstanceData[],
+  clipMap: Map<string, AnimationClipData>,
+  scheduledMap: Map<string, number>
+): Map<string, number> {
+  const delays = new Map<string, number>();
+  const instMap = new Map<string, InstanceData>();
+  for (const inst of instances) {
+    instMap.set(inst.id, inst);
+  }
+
+  const visiting = new Set<string>();
+
+  function getDelay(instId: string): number {
+    if (delays.has(instId)) return delays.get(instId)!;
+    const inst = instMap.get(instId);
+    if (!inst) return 0;
+
+    if (visiting.has(instId)) {
+      // Cycle detected, fallback to base delay
+      return (inst.delay ?? 0) + (scheduledMap.get(instId) ?? 0);
+    }
+    visiting.add(instId);
+
+    let baseDelay = (inst.delay ?? 0) + (scheduledMap.get(instId) ?? 0);
+
+    if (inst.dependencies && inst.dependencies.length > 0) {
+      for (const dep of inst.dependencies) {
+        const targetInst = instMap.get(dep.target_instance_id);
+        if (!targetInst) continue;
+
+        const targetDelay = getDelay(targetInst.id);
+        const targetClip = clipMap.get(targetInst.clip_id);
+        const targetDuration = (targetClip?.duration ?? 0) * (targetInst.duration_scale || 1.0);
+        const offset = dep.offset_ms ?? 0;
+
+        let releaseTime = targetDelay + offset;
+        const trigger = dep.trigger ?? "onComplete";
+
+        if (trigger === "onComplete") {
+          releaseTime = targetDelay + targetDuration + offset;
+        } else if (trigger === "onStart") {
+          releaseTime = targetDelay + offset;
+        } else if (trigger === "onKeyframe" && targetClip?.keyframes) {
+          const kfIdx = dep.keyframe_index ?? 0;
+          const sortedKfs = getSortedKeyframes(targetClip);
+          const kfTime = sortedKfs[Math.min(kfIdx, sortedKfs.length - 1)]?.time ?? 0;
+          releaseTime = targetDelay + kfTime * (targetInst.duration_scale || 1.0) + offset;
+        }
+
+        if (releaseTime > baseDelay) {
+          baseDelay = releaseTime;
+        }
+      }
+    }
+
+    visiting.delete(instId);
+    delays.set(instId, baseDelay);
+    return baseDelay;
+  }
+
+  for (const inst of instances) {
+    getDelay(inst.id);
+  }
+
+  return delays;
+}
+
 export class Engine {
   private clips: Map<string, AnimationClipData> = new Map();
   private instances: InstanceData[] = [];
@@ -851,8 +919,6 @@ export class Engine {
       }
       this.dirtyFlags &= ~EngineDirtyFlags.DIRTY_TIMELINE;
     }
-    const scheduledMap = this.cachedScheduledMap;
-
     if (this.dirtyFlags & EngineDirtyFlags.DIRTY_CLIPS) {
       this.cachedClipIndexMap.clear();
       let counter = 0;
@@ -863,6 +929,8 @@ export class Engine {
     }
     const clipIndexMap = this.cachedClipIndexMap;
     const clipMap = this.clips;
+    const scheduledMap = this.cachedScheduledMap;
+    const resolvedDelaysMap = resolveInstanceDelays(this.instances, clipMap, scheduledMap);
 
     if (this.dirtyFlags & EngineDirtyFlags.DIRTY_INSTANCES) {
       if (this.cachedAdditiveFlags.length < count) {
@@ -881,10 +949,7 @@ export class Engine {
       const offset = i * floatsPerInst;
 
       const isVisible = inst.visible ?? true;
-      let delay = inst.delay ?? 0;
-      if (scheduledMap.has(inst.id)) {
-        delay += scheduledMap.get(inst.id)!;
-      }
+      const delay = resolvedDelaysMap.get(inst.id) ?? (inst.delay ?? 0);
 
       if (!isVisible || globalTime < delay || !clip) {
         floatView[offset + 0] = 1; floatView[offset + 1] = 0; floatView[offset + 2] = 0; floatView[offset + 3] = 0;
@@ -914,7 +979,42 @@ export class Engine {
       const clipTransform = scratchClipResult.transform;
       const clipOpacity = scratchClipResult.opacity;
 
-      writeTransformToMatrix(inst.initial_transform ?? DEFAULT_TRANSFORM, this.scratchInitialMat, 0);
+      let resolvedInitialTransform = inst.initial_transform ?? DEFAULT_TRANSFORM;
+      if (inst.transform_bindings && inst.transform_bindings.length > 0) {
+        // Deep clone transform structure for reactive binding updates
+        resolvedInitialTransform = {
+          translation: [...resolvedInitialTransform.translation] as [number, number, number],
+          rotation_quat: [...resolvedInitialTransform.rotation_quat] as [number, number, number, number],
+          scale: [...resolvedInitialTransform.scale] as [number, number, number],
+          origin: [...resolvedInitialTransform.origin] as [number, number, number],
+        };
+
+        for (const binding of inst.transform_bindings) {
+          const sourceInstIdx = this.instances.findIndex((item) => item.id === binding.source_instance_id);
+          if (sourceInstIdx >= 0 && sourceInstIdx < i) {
+            const sourceOffset = sourceInstIdx * floatsPerInst;
+            // Extract source evaluated matrix parameters or translation
+            const srcTx = floatView[sourceOffset + 12];
+            const srcTy = floatView[sourceOffset + 13];
+            const srcTz = floatView[sourceOffset + 14];
+            const offsetVal = binding.offset ?? 0;
+
+            if (binding.target_property === "initial_transform.translation.x" || binding.target_property === "translation.x") {
+              resolvedInitialTransform.translation[0] = srcTx + offsetVal;
+            } else if (binding.target_property === "initial_transform.translation.y" || binding.target_property === "translation.y") {
+              resolvedInitialTransform.translation[1] = srcTy + offsetVal;
+            } else if (binding.target_property === "initial_transform.translation.z" || binding.target_property === "translation.z") {
+              resolvedInitialTransform.translation[2] = srcTz + offsetVal;
+            } else if (binding.target_property === "initial_transform.translation" || binding.target_property === "translation") {
+              resolvedInitialTransform.translation[0] = srcTx + offsetVal;
+              resolvedInitialTransform.translation[1] = srcTy + offsetVal;
+              resolvedInitialTransform.translation[2] = srcTz + offsetVal;
+            }
+          }
+        }
+      }
+
+      writeTransformToMatrix(resolvedInitialTransform, this.scratchInitialMat, 0);
       writeTransformToMatrix(clipTransform, this.scratchClipMat, 0);
 
       const isAdditive = this.cachedAdditiveFlags[i] === 1;

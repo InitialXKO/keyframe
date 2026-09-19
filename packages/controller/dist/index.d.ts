@@ -6,6 +6,20 @@ export interface PlayerOptions {
 }
 export type PlayerEvent = "frame" | "play" | "pause" | "ended" | "seek";
 export type PlayerListener = (...args: any[]) => void;
+export interface AlignerCondition {
+    trigger?: "onComplete" | "onStart" | "onKeyframe" | string;
+    keyframeIndex?: number;
+    timeMs?: number;
+}
+export declare class ApplyAligner {
+    private player;
+    private pendingBarriers;
+    constructor(player: AnimationPlayer);
+    waitUntil(targetInstanceId: string, condition?: AlignerCondition): {
+        then: (callback: () => void) => void;
+    };
+    checkBarriers(currentTimeMs: number): void;
+}
 export declare class AnimationPlayer {
     engine: any;
     fps: number;
@@ -17,6 +31,7 @@ export declare class AnimationPlayer {
     private durationMs;
     private listeners;
     private timerId;
+    private aligners;
     private lastTimestamp;
     private audioBaseTime;
     private adaptiveTimeScaleMultiplier;
@@ -24,6 +39,7 @@ export declare class AnimationPlayer {
     play(): void;
     pause(): void;
     seek(ms: number): void;
+    createAligner(): ApplyAligner;
     loop(enable?: boolean): void;
     getCurrentTime(): number;
     getIsPlaying(): boolean;

@@ -121,6 +121,30 @@ fn default_iterations() -> f64 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstanceDependencyData {
+    pub target_instance_id: String,
+    #[serde(default = "default_trigger")]
+    pub trigger: String, // "onComplete", "onStart", "onKeyframe"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keyframe_index: Option<usize>,
+    #[serde(default)]
+    pub offset_ms: f64,
+}
+
+fn default_trigger() -> String {
+    "onComplete".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransformBindingData {
+    pub source_instance_id: String,
+    pub source_property: String, // "translation.x", "translation.y", "translation.z", "translation", "transform"
+    pub target_property: String, // "initial_transform.translation.x", etc.
+    #[serde(default)]
+    pub offset: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstanceData {
     pub id: String,
     pub clip_id: String,
@@ -133,6 +157,10 @@ pub struct InstanceData {
     #[serde(default = "default_blend_mode")]
     pub blend_mode: BlendMode,
     pub initial_transform: TransformData,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependencies: Option<Vec<InstanceDependencyData>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform_bindings: Option<Vec<TransformBindingData>>,
 }
 
 pub const INSTANCE_SIZE: usize = 80;

@@ -359,6 +359,8 @@ mod unit_tests {
             time_remapping_speed: 2.0,
             blend_mode: BlendMode::Additive,
             initial_transform: TransformData::default(),
+            dependencies: None,
+            transform_bindings: None,
         };
         engine.add_instance(inst_data).unwrap();
 
@@ -408,6 +410,8 @@ mod unit_tests {
                 time_remapping_speed: 1.0,
                 blend_mode: BlendMode::Override,
                 initial_transform: TransformData::default(),
+                dependencies: None,
+                transform_bindings: None,
             };
             engine.add_instance(inst_data).unwrap();
         }
@@ -460,6 +464,8 @@ mod unit_tests {
             time_remapping_speed: 1.0,
             blend_mode: BlendMode::Override,
             initial_transform: TransformData::default(),
+            dependencies: None,
+            transform_bindings: None,
         };
         engine.add_instance(inst_data).unwrap();
 
@@ -512,6 +518,8 @@ mod unit_tests {
                 time_remapping_speed: 1.0,
                 blend_mode: BlendMode::Override,
                 initial_transform: TransformData::default(),
+                dependencies: None,
+                transform_bindings: None,
             };
             engine.add_instance(inst_data).unwrap();
         }

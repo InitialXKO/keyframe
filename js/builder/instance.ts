@@ -1,4 +1,4 @@
-import { BlendMode, InstanceData, TransformData } from "./types.js";
+import { BlendMode, InstanceData, InstanceDependencyData, TransformBindingData, TransformData } from "./types.js";
 import { TransformBuilder } from "./transform.js";
 
 let instanceIdCounter = 0;
@@ -13,6 +13,8 @@ export class Instance {
   private _timeRemappingSpeed = 1.0;
   private _blendMode: BlendMode = BlendMode.Override;
   private _initialTransform: TransformData = new TransformBuilder().build();
+  private _dependencies: InstanceDependencyData[] = [];
+  private _transformBindings: TransformBindingData[] = [];
 
   constructor(clipId: string, id?: string) {
     this.clipId = clipId;
@@ -54,6 +56,40 @@ export class Instance {
     return this;
   }
 
+  public dependsOn(
+    targetInstanceId: string,
+    options?: {
+      trigger?: "onComplete" | "onStart" | "onKeyframe" | string;
+      keyframeIndex?: number;
+      offsetMs?: number;
+    }
+  ): this {
+    this._dependencies.push({
+      target_instance_id: targetInstanceId,
+      trigger: options?.trigger ?? "onComplete",
+      keyframe_index: options?.keyframeIndex,
+      offset_ms: options?.offsetMs ?? 0,
+    });
+    return this;
+  }
+
+  public bindTransformFrom(
+    sourceInstanceId: string,
+    options: {
+      sourceProperty: string;
+      targetProperty: string;
+      offset?: number;
+    }
+  ): this {
+    this._transformBindings.push({
+      source_instance_id: sourceInstanceId,
+      source_property: options.sourceProperty,
+      target_property: options.targetProperty,
+      offset: options.offset ?? 0,
+    });
+    return this;
+  }
+
   public build(): InstanceData {
     return {
       id: this.id,
@@ -65,6 +101,8 @@ export class Instance {
       time_remapping_speed: this._timeRemappingSpeed,
       blend_mode: this._blendMode,
       initial_transform: this._initialTransform,
+      dependencies: this._dependencies.length > 0 ? [...this._dependencies] : undefined,
+      transform_bindings: this._transformBindings.length > 0 ? [...this._transformBindings] : undefined,
     };
   }
 }
