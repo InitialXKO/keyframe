@@ -1,5 +1,3 @@
-import { WasmLoader } from "./wasm_loader.js";
-
 export interface WasmInitOptions {
   moduleOrPath?: string | URL | ArrayBuffer | Response;
   wasmMemory?: WebAssembly.Memory;
