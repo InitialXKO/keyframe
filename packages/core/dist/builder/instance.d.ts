@@ -9,6 +9,8 @@ export declare class Instance {
     private _timeRemappingSpeed;
     private _blendMode;
     private _initialTransform;
+    private _dependencies;
+    private _transformBindings;
     constructor(clipId: string, id?: string);
     opacity(o: number): this;
     visible(v: boolean): this;
@@ -17,5 +19,15 @@ export declare class Instance {
     timeRemappingSpeed(speed: number): this;
     blendMode(mode: BlendMode): this;
     initialTransform(t: TransformData): this;
+    dependsOn(targetInstanceId: string, options?: {
+        trigger?: "onComplete" | "onStart" | "onKeyframe" | string;
+        keyframeIndex?: number;
+        offsetMs?: number;
+    }): this;
+    bindTransformFrom(sourceInstanceId: string, options: {
+        sourceProperty: string;
+        targetProperty: string;
+        offset?: number;
+    }): this;
     build(): InstanceData;
 }

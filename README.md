@@ -28,7 +28,11 @@
 
 ## 核心特性
 
-- **Rust WASM 计算内核**: 高吞吐量时间轴平坦化、三次贝塞尔曲线 (Cubic-Bezier) 缓动解算、四元数球面线性插值 (Slerp)、时间重映射 (Time Remapping) 与加性混合 (Additive Blending)。
+- **Rust WASM 计算内核与 $O(\log N)$ 二分查找**: 高吞吐量时间轴平坦化、预计算 Keyframe 分块边界 ($O(\log N)$ 二分快速查找)、三次贝塞尔曲线 (Cubic-Bezier) 缓动解算、四元数球面线性插值 (Slerp)、时间重映射 (Time Remapping) 与加性混合 (Additive Blending)。
+- **多 Instance 联动 (Multi-Instance Coupling)**:
+  - **方案 A (声明式 DAG 依赖)**：通过 `Instance.prototype.dependsOn()` 设置 `onComplete` / `onStart` / `onKeyframe` 事件条件及偏移量，由引擎拓扑计算动态延时。
+  - **方案 B (响应式 Apply Chain)**：通过 `Instance.prototype.bindTransformFrom()` 实现属性实时追随与空间变换绑定。
+  - **方案 C (播放器 Aligner 屏障)**：通过 `@keyframe-engine/controller` 的 `player.createAligner().waitUntil()` 机制提供运行时信号屏障与挂起同步。
 - **OPFS 持久化与流式烘焙**: 支持基于 Origin Private File System (OPFS) 的分块流式烘焙与二进制预渲染数据加载。
 - **Zero-Copy ABI 内存布局**: 采用 `#[repr(C, align(16))]` 保证 16 字节对齐与 80 字节固定实例布局 (`INSTANCE_SIZE = 80`)，实现 WASM 至 WebGPU Buffer 内存零拷贝传输。
 - **音频主时钟自适应收敛 (Audio Clock Master)**: `@keyframe-engine/controller` 支持微小漂移 (< ±50ms) 的双循环 timeScale 微调与较大漂移 (> ±100ms) 的硬帧重锁定。
@@ -136,13 +140,24 @@ const clip = new Clip("bounce_clip")
   );
 
 // 创建动画实例
-const instance = new Instance("bounce_clip", "inst_1")
+// 创建动画实例并配置多 Instance 联动
+const instance1 = new Instance("bounce_clip", "inst_1")
   .delay(0)
   .timeRemappingSpeed(1.2)
   .blendMode(BlendMode.Additive);
 
+// 方案 A: inst_2 在 inst_1 播放完毕后延时 200ms 开始
+// 方案 B: inst_2 的起始 X 坐标响应式绑定 inst_1 求值得到的 X 坐标 + 10
+const instance2 = new Instance("bounce_clip", "inst_2")
+  .dependsOn("inst_1", { trigger: "onComplete", offsetMs: 200 })
+  .bindTransformFrom("inst_1", {
+    sourceProperty: "translation.x",
+    targetProperty: "initial_transform.translation.x",
+    offset: 10,
+  });
+
 engine.addClip(clip);
-engine.addInstances([instance]);
+engine.addInstances([instance1, instance2]);
 
 // 零样板全异步加载初始化 (自动拉取/编译 WASM、绑定 memory、挂载 OPFS 缓存)
 await engine.prepare();
@@ -227,6 +242,12 @@ import { controller } from "@keyframe-engine/controller";
 
 const engine = new Engine();
 const player = controller.createPlayer(engine, { fps: 60, timeScale: 1.0 });
+
+// 方案 C: 使用 Controller 的 ApplyAligner 创建运行时事件同步屏障
+const aligner = player.createAligner();
+aligner.waitUntil("inst_1", { trigger: "onComplete" }).then(() => {
+  console.log("inst_1 finished! Proceeding with next animation step.");
+});
 
 player.on("frame", (timeMs) => {
   console.log("Current frame time:", timeMs);

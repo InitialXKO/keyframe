@@ -359,6 +359,8 @@ mod unit_tests {
             time_remapping_speed: 2.0,
             blend_mode: BlendMode::Additive,
             initial_transform: TransformData::default(),
+            dependencies: None,
+            transform_bindings: None,
         };
         engine.add_instance(inst_data).unwrap();
 
@@ -408,6 +410,8 @@ mod unit_tests {
                 time_remapping_speed: 1.0,
                 blend_mode: BlendMode::Override,
                 initial_transform: TransformData::default(),
+                dependencies: None,
+                transform_bindings: None,
             };
             engine.add_instance(inst_data).unwrap();
         }
@@ -460,6 +464,8 @@ mod unit_tests {
             time_remapping_speed: 1.0,
             blend_mode: BlendMode::Override,
             initial_transform: TransformData::default(),
+            dependencies: None,
+            transform_bindings: None,
         };
         engine.add_instance(inst_data).unwrap();
 
@@ -512,6 +518,8 @@ mod unit_tests {
                 time_remapping_speed: 1.0,
                 blend_mode: BlendMode::Override,
                 initial_transform: TransformData::default(),
+                dependencies: None,
+                transform_bindings: None,
             };
             engine.add_instance(inst_data).unwrap();
         }
@@ -541,6 +549,52 @@ mod unit_tests {
 
         assert_eq!(early_chunks, 1);
         assert!(early_baked < total_baked);
+    }
+
+    #[test]
+    fn test_multi_keyframe_binary_search_accuracy() {
+        use keyframe_engine::clip::AnimationClip;
+
+        // Build a clip with 100 keyframes (t = 0.0, 10.0, 20.0 ... 990.0)
+        let keyframes: Vec<KeyframeData> = (0..100)
+            .map(|i| KeyframeData {
+                time: (i as f64) * 10.0,
+                transform: TransformData {
+                    translation: [(i as f32) * 2.0, 0.0, 0.0],
+                    ..Default::default()
+                },
+                opacity: 1.0,
+                easing: EasingType::Linear,
+                cubic_params: None,
+            })
+            .collect();
+
+        let clip_data = AnimationClipData {
+            id: "multi_kf_clip".to_string(),
+            duration: 990.0,
+            iterations: 1.0,
+            keyframes,
+            metadata: None,
+        };
+
+        let clip = AnimationClip::new(clip_data);
+        assert_eq!(clip.chunk_starts.len(), 100);
+
+        // Evaluate at exactly keyframe #25 (t = 250.0)
+        let (t_25, _) = clip.evaluate(250.0);
+        assert!((t_25.translation[0] - 50.0).abs() < 1e-4);
+
+        // Evaluate in-between keyframe #25 and #26 (t = 255.0 => halfway between x=50 and x=52 -> x=51)
+        let (t_25_5, _) = clip.evaluate(255.0);
+        assert!((t_25_5.translation[0] - 51.0).abs() < 1e-4);
+
+        // Evaluate near start
+        let (t_start, _) = clip.evaluate(5.0);
+        assert!((t_start.translation[0] - 1.0).abs() < 1e-4);
+
+        // Evaluate near end
+        let (t_end, _) = clip.evaluate(985.0);
+        assert!((t_end.translation[0] - 197.0).abs() < 1e-4);
     }
 
     #[test]

@@ -51,6 +51,118 @@ test("JS Evaluator: Supports all 16 new Easing variants (Bounce, Elastic, Back, 
   }
 });
 
+test("Multi-Instance Coupling Scheme A: Declarative Dependency DAG dynamic delay", async () => {
+  const engine = new Engine();
+  const clip1 = new Clip("c1").duration(1000);
+  const clip2 = new Clip("c2").duration(500);
+
+  // Inst2 depends on Inst1 onComplete + 200ms offset -> Delay should be 1000 + 200 = 1200ms
+  const inst1 = new Instance("c1", "inst1").delay(0);
+  const inst2 = new Instance("c2", "inst2").dependsOn("inst1", { trigger: "onComplete", offsetMs: 200 });
+
+  engine.addClip(clip1);
+  engine.addClip(clip2);
+  engine.addInstances([inst1, inst2]);
+  engine.prepared = true;
+
+  // At globalTime = 1000ms: inst2 should still be waiting (delay = 1200ms)
+  const evalBefore = engine.getEvaluatedInstances(1000, true);
+  const evalInst2Before = evalBefore.find((i) => i.id === "inst2");
+  assert.equal(evalInst2Before.visible, false);
+
+  // At globalTime = 1300ms: inst2 should now be visible and active
+  const evalAfter = engine.getEvaluatedInstances(1300, true);
+  const evalInst2After = evalAfter.find((i) => i.id === "inst2");
+  assert.equal(evalInst2After.visible, true);
+});
+
+test("Multi-Instance Coupling Scheme B: Reactive Apply Chain & Transform Bindings", async () => {
+  const engine = new Engine();
+  const clip1 = new Clip("c1")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(200).build()));
+
+  const clip2 = new Clip("c2")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(50).build()));
+
+  const inst1 = new Instance("c1", "inst1");
+  // Inst2's initial_transform.translation.x binds to Inst1's evaluated translation.x + 10
+  const inst2 = new Instance("c2", "inst2").bindTransformFrom("inst1", {
+    sourceProperty: "translation.x",
+    targetProperty: "initial_transform.translation.x",
+    offset: 10,
+  });
+
+  engine.addClip(clip1);
+  engine.addClip(clip2);
+  engine.addInstances([inst1, inst2]);
+  engine.prepared = true;
+
+  // At t=1000ms, inst1 clip translateX = 200.
+  // inst2 initial translation.x becomes 200 + 10 = 210.
+  // inst2 clip translateX at t=1000ms = 50.
+  // Final inst2 matrix tx = 210 + 50 = 260.
+  const evaluated = engine.getEvaluatedInstances(1000, true);
+  const evalInst2 = evaluated.find((i) => i.id === "inst2");
+  assert.equal(evalInst2.transformMatrix[12], 260);
+});
+
+test("Multi-Instance Coupling Scheme C: Controller ApplyAligner barrier", async () => {
+  const { controller } = await import("../dist/index.js");
+  const engine = new Engine();
+  const clip1 = new Clip("c1").duration(1000);
+  const inst1 = new Instance("c1", "inst1");
+  engine.addClip(clip1);
+  engine.addInstances([inst1]);
+  engine.prepared = true;
+
+  const player = controller.createPlayer(engine, { fps: 60 });
+  const aligner = player.createAligner();
+
+  let triggered = false;
+  aligner.waitUntil("inst1", { trigger: "onComplete" }).then(() => {
+    triggered = true;
+  });
+
+  aligner.checkBarriers(500);
+  assert.equal(triggered, false);
+
+  aligner.checkBarriers(1100);
+  assert.equal(triggered, true);
+});
+
+test("JS Evaluator: Multi-keyframe binary search accuracy", async () => {
+  const engine = new Engine();
+  const clip = new Clip("multi_kf");
+  clip.duration(990);
+
+  // 100 keyframes
+  for (let i = 0; i < 100; i++) {
+    clip.addKeyframe(
+      new Keyframe(i * 10).transform(new TransformBuilder().translateX(i * 2).build())
+    );
+  }
+
+  engine.addClip(clip);
+  engine.addInstances([new Instance("multi_kf", "i1")]);
+  engine.prepared = true;
+
+  // Exact keyframe #25 (t = 250 => tx = 50)
+  const eval25 = engine.getEvaluatedInstances(250, true)[0];
+  assert.ok(Math.abs(eval25.transformMatrix[12] - 50) < 1e-3);
+
+  // Between #25 and #26 (t = 255 => tx = 51)
+  const eval25_5 = engine.getEvaluatedInstances(255, true)[0];
+  assert.ok(Math.abs(eval25_5.transformMatrix[12] - 51) < 1e-3);
+
+  // Near end (t = 985 => tx = 197)
+  const evalEnd = engine.getEvaluatedInstances(985, true)[0];
+  assert.ok(Math.abs(evalEnd.transformMatrix[12] - 197) < 1e-3);
+});
+
 test("Easing.CubicBezier defaults to standard EaseInOut curve (0.42, 0, 0.58, 1) when cubic_params is omitted", async () => {
   const engine = new Engine();
   const clip = new Clip("bezier_default")

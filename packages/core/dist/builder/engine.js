@@ -340,8 +340,31 @@ function getSortedKeyframes(clip) {
     if (!sorted) {
         sorted = clip.keyframes ? [...clip.keyframes].sort((a, b) => a.time - b.time) : [];
         clip._sortedKeyframes = sorted;
+        clip._chunkStarts = sorted.map((kf) => kf.time);
     }
     return sorted;
+}
+function getChunkStarts(clip) {
+    let starts = clip._chunkStarts;
+    if (!starts) {
+        getSortedKeyframes(clip);
+        starts = clip._chunkStarts;
+    }
+    return starts;
+}
+function findKeyframeIndex(chunkStarts, targetTime) {
+    let low = 0;
+    let high = chunkStarts.length;
+    while (low < high) {
+        const mid = (low + high) >>> 1;
+        if (chunkStarts[mid] <= targetTime) {
+            low = mid + 1;
+        }
+        else {
+            high = mid;
+        }
+    }
+    return Math.max(0, low - 1);
 }
 const scratchClipTransform = {
     translation: [0, 0, 0],
@@ -397,27 +420,28 @@ function evaluateClipTo(clip, localTime, outResult) {
         outResult.opacity = kf.opacity ?? 1.0;
         return;
     }
-    for (let i = 0; i < lastIdx; i++) {
-        const kfCurr = sortedKeyframes[i];
-        const kfNext = sortedKeyframes[i + 1];
-        if (effectiveTime >= kfCurr.time && effectiveTime <= kfNext.time) {
-            const segDuration = kfNext.time - kfCurr.time;
-            if (segDuration <= 0.0001) {
-                outResult.transform = kfNext.transform ?? DEFAULT_TRANSFORM;
-                outResult.opacity = kfNext.opacity ?? 1.0;
-                return;
-            }
-            const linearT = (effectiveTime - kfCurr.time) / segDuration;
-            const easedT = evaluateEasing(kfCurr.easing ?? Easing.Linear, kfCurr.cubic_params, linearT);
-            const currTrans = kfCurr.transform ?? DEFAULT_TRANSFORM;
-            const nextTrans = kfNext.transform ?? DEFAULT_TRANSFORM;
-            const currOpacity = kfCurr.opacity ?? 1.0;
-            const nextOpacity = kfNext.opacity ?? 1.0;
-            interpolateTransformTo(currTrans, nextTrans, easedT, scratchClipTransform);
-            outResult.transform = scratchClipTransform;
-            outResult.opacity = currOpacity + (nextOpacity - currOpacity) * easedT;
+    const chunkStarts = getChunkStarts(clip);
+    const idx = findKeyframeIndex(chunkStarts, effectiveTime);
+    const i = Math.min(idx, lastIdx - 1);
+    const kfCurr = sortedKeyframes[i];
+    const kfNext = sortedKeyframes[i + 1];
+    if (effectiveTime >= kfCurr.time && effectiveTime <= kfNext.time) {
+        const segDuration = kfNext.time - kfCurr.time;
+        if (segDuration <= 0.0001) {
+            outResult.transform = kfNext.transform ?? DEFAULT_TRANSFORM;
+            outResult.opacity = kfNext.opacity ?? 1.0;
             return;
         }
+        const linearT = (effectiveTime - kfCurr.time) / segDuration;
+        const easedT = evaluateEasing(kfCurr.easing ?? Easing.Linear, kfCurr.cubic_params, linearT);
+        const currTrans = kfCurr.transform ?? DEFAULT_TRANSFORM;
+        const nextTrans = kfNext.transform ?? DEFAULT_TRANSFORM;
+        const currOpacity = kfCurr.opacity ?? 1.0;
+        const nextOpacity = kfNext.opacity ?? 1.0;
+        interpolateTransformTo(currTrans, nextTrans, easedT, scratchClipTransform);
+        outResult.transform = scratchClipTransform;
+        outResult.opacity = currOpacity + (nextOpacity - currOpacity) * easedT;
+        return;
     }
     const kf = sortedKeyframes[lastIdx];
     outResult.transform = kf.transform ?? DEFAULT_TRANSFORM;
@@ -442,6 +466,62 @@ function flattenTimelineToMap(root, outMap) {
     }
     traverse(root, 0);
     return outMap;
+}
+function resolveInstanceDelays(instances, clipMap, scheduledMap) {
+    const delays = new Map();
+    const instMap = new Map();
+    for (const inst of instances) {
+        instMap.set(inst.id, inst);
+    }
+    const visiting = new Set();
+    function getDelay(instId) {
+        if (delays.has(instId))
+            return delays.get(instId);
+        const inst = instMap.get(instId);
+        if (!inst)
+            return 0;
+        if (visiting.has(instId)) {
+            // Cycle detected, fallback to base delay
+            return (inst.delay ?? 0) + (scheduledMap.get(instId) ?? 0);
+        }
+        visiting.add(instId);
+        let baseDelay = (inst.delay ?? 0) + (scheduledMap.get(instId) ?? 0);
+        if (inst.dependencies && inst.dependencies.length > 0) {
+            for (const dep of inst.dependencies) {
+                const targetInst = instMap.get(dep.target_instance_id);
+                if (!targetInst)
+                    continue;
+                const targetDelay = getDelay(targetInst.id);
+                const targetClip = clipMap.get(targetInst.clip_id);
+                const targetDuration = (targetClip?.duration ?? 0) * (targetInst.duration_scale || 1.0);
+                const offset = dep.offset_ms ?? 0;
+                let releaseTime = targetDelay + offset;
+                const trigger = dep.trigger ?? "onComplete";
+                if (trigger === "onComplete") {
+                    releaseTime = targetDelay + targetDuration + offset;
+                }
+                else if (trigger === "onStart") {
+                    releaseTime = targetDelay + offset;
+                }
+                else if (trigger === "onKeyframe" && targetClip?.keyframes) {
+                    const kfIdx = dep.keyframe_index ?? 0;
+                    const sortedKfs = getSortedKeyframes(targetClip);
+                    const kfTime = sortedKfs[Math.min(kfIdx, sortedKfs.length - 1)]?.time ?? 0;
+                    releaseTime = targetDelay + kfTime * (targetInst.duration_scale || 1.0) + offset;
+                }
+                if (releaseTime > baseDelay) {
+                    baseDelay = releaseTime;
+                }
+            }
+        }
+        visiting.delete(instId);
+        delays.set(instId, baseDelay);
+        return baseDelay;
+    }
+    for (const inst of instances) {
+        getDelay(inst.id);
+    }
+    return delays;
 }
 export class Engine {
     clips = new Map();
@@ -731,7 +811,6 @@ export class Engine {
             }
             this.dirtyFlags &= ~EngineDirtyFlags.DIRTY_TIMELINE;
         }
-        const scheduledMap = this.cachedScheduledMap;
         if (this.dirtyFlags & EngineDirtyFlags.DIRTY_CLIPS) {
             this.cachedClipIndexMap.clear();
             let counter = 0;
@@ -742,6 +821,8 @@ export class Engine {
         }
         const clipIndexMap = this.cachedClipIndexMap;
         const clipMap = this.clips;
+        const scheduledMap = this.cachedScheduledMap;
+        const resolvedDelaysMap = resolveInstanceDelays(this.instances, clipMap, scheduledMap);
         if (this.dirtyFlags & EngineDirtyFlags.DIRTY_INSTANCES) {
             if (this.cachedAdditiveFlags.length < count) {
                 this.cachedAdditiveFlags = new Uint8Array(count);
@@ -757,10 +838,7 @@ export class Engine {
             const clipIdx = clipIndexMap.get(inst.clip_id) ?? i;
             const offset = i * floatsPerInst;
             const isVisible = inst.visible ?? true;
-            let delay = inst.delay ?? 0;
-            if (scheduledMap.has(inst.id)) {
-                delay += scheduledMap.get(inst.id);
-            }
+            const delay = resolvedDelaysMap.get(inst.id) ?? (inst.delay ?? 0);
             if (!isVisible || globalTime < delay || !clip) {
                 floatView[offset + 0] = 1;
                 floatView[offset + 1] = 0;
@@ -798,7 +876,42 @@ export class Engine {
             evaluateClipTo(clip, localTime, scratchClipResult);
             const clipTransform = scratchClipResult.transform;
             const clipOpacity = scratchClipResult.opacity;
-            writeTransformToMatrix(inst.initial_transform ?? DEFAULT_TRANSFORM, this.scratchInitialMat, 0);
+            let resolvedInitialTransform = inst.initial_transform ?? DEFAULT_TRANSFORM;
+            if (inst.transform_bindings && inst.transform_bindings.length > 0) {
+                // Deep clone transform structure for reactive binding updates
+                resolvedInitialTransform = {
+                    translation: [...resolvedInitialTransform.translation],
+                    rotation_quat: [...resolvedInitialTransform.rotation_quat],
+                    scale: [...resolvedInitialTransform.scale],
+                    origin: [...resolvedInitialTransform.origin],
+                };
+                for (const binding of inst.transform_bindings) {
+                    const sourceInstIdx = this.instances.findIndex((item) => item.id === binding.source_instance_id);
+                    if (sourceInstIdx >= 0 && sourceInstIdx < i) {
+                        const sourceOffset = sourceInstIdx * floatsPerInst;
+                        // Extract source evaluated matrix parameters or translation
+                        const srcTx = floatView[sourceOffset + 12];
+                        const srcTy = floatView[sourceOffset + 13];
+                        const srcTz = floatView[sourceOffset + 14];
+                        const offsetVal = binding.offset ?? 0;
+                        if (binding.target_property === "initial_transform.translation.x" || binding.target_property === "translation.x") {
+                            resolvedInitialTransform.translation[0] = srcTx + offsetVal;
+                        }
+                        else if (binding.target_property === "initial_transform.translation.y" || binding.target_property === "translation.y") {
+                            resolvedInitialTransform.translation[1] = srcTy + offsetVal;
+                        }
+                        else if (binding.target_property === "initial_transform.translation.z" || binding.target_property === "translation.z") {
+                            resolvedInitialTransform.translation[2] = srcTz + offsetVal;
+                        }
+                        else if (binding.target_property === "initial_transform.translation" || binding.target_property === "translation") {
+                            resolvedInitialTransform.translation[0] = srcTx + offsetVal;
+                            resolvedInitialTransform.translation[1] = srcTy + offsetVal;
+                            resolvedInitialTransform.translation[2] = srcTz + offsetVal;
+                        }
+                    }
+                }
+            }
+            writeTransformToMatrix(resolvedInitialTransform, this.scratchInitialMat, 0);
             writeTransformToMatrix(clipTransform, this.scratchClipMat, 0);
             const isAdditive = this.cachedAdditiveFlags[i] === 1;
             if (!isAdditive) {

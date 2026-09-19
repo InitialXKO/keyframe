@@ -11,6 +11,8 @@ export class Instance {
     _timeRemappingSpeed = 1.0;
     _blendMode = BlendMode.Override;
     _initialTransform = new TransformBuilder().build();
+    _dependencies = [];
+    _transformBindings = [];
     constructor(clipId, id) {
         this.clipId = clipId;
         this.id = id || `inst_${++instanceIdCounter}`;
@@ -43,6 +45,24 @@ export class Instance {
         this._initialTransform = t;
         return this;
     }
+    dependsOn(targetInstanceId, options) {
+        this._dependencies.push({
+            target_instance_id: targetInstanceId,
+            trigger: options?.trigger ?? "onComplete",
+            keyframe_index: options?.keyframeIndex,
+            offset_ms: options?.offsetMs ?? 0,
+        });
+        return this;
+    }
+    bindTransformFrom(sourceInstanceId, options) {
+        this._transformBindings.push({
+            source_instance_id: sourceInstanceId,
+            source_property: options.sourceProperty,
+            target_property: options.targetProperty,
+            offset: options.offset ?? 0,
+        });
+        return this;
+    }
     build() {
         return {
             id: this.id,
@@ -54,6 +74,8 @@ export class Instance {
             time_remapping_speed: this._timeRemappingSpeed,
             blend_mode: this._blendMode,
             initial_transform: this._initialTransform,
+            dependencies: this._dependencies.length > 0 ? [...this._dependencies] : undefined,
+            transform_bindings: this._transformBindings.length > 0 ? [...this._transformBindings] : undefined,
         };
     }
 }
