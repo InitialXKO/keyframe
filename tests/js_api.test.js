@@ -51,6 +51,35 @@ test("JS Evaluator: Supports all 16 new Easing variants (Bounce, Elastic, Back, 
   }
 });
 
+test("JS Evaluator: Multi-keyframe binary search accuracy", async () => {
+  const engine = new Engine();
+  const clip = new Clip("multi_kf");
+  clip.duration(990);
+
+  // 100 keyframes
+  for (let i = 0; i < 100; i++) {
+    clip.addKeyframe(
+      new Keyframe(i * 10).transform(new TransformBuilder().translateX(i * 2).build())
+    );
+  }
+
+  engine.addClip(clip);
+  engine.addInstances([new Instance("multi_kf", "i1")]);
+  engine.prepared = true;
+
+  // Exact keyframe #25 (t = 250 => tx = 50)
+  const eval25 = engine.getEvaluatedInstances(250, true)[0];
+  assert.ok(Math.abs(eval25.transformMatrix[12] - 50) < 1e-3);
+
+  // Between #25 and #26 (t = 255 => tx = 51)
+  const eval25_5 = engine.getEvaluatedInstances(255, true)[0];
+  assert.ok(Math.abs(eval25_5.transformMatrix[12] - 51) < 1e-3);
+
+  // Near end (t = 985 => tx = 197)
+  const evalEnd = engine.getEvaluatedInstances(985, true)[0];
+  assert.ok(Math.abs(evalEnd.transformMatrix[12] - 197) < 1e-3);
+});
+
 test("Easing.CubicBezier defaults to standard EaseInOut curve (0.42, 0, 0.58, 1) when cubic_params is omitted", async () => {
   const engine = new Engine();
   const clip = new Clip("bezier_default")

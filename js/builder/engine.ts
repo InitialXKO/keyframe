@@ -373,8 +373,32 @@ function getSortedKeyframes(clip: AnimationClipData): KeyframeData[] {
   if (!sorted) {
     sorted = clip.keyframes ? [...clip.keyframes].sort((a, b) => a.time - b.time) : [];
     (clip as any)._sortedKeyframes = sorted;
+    (clip as any)._chunkStarts = sorted.map((kf) => kf.time);
   }
   return sorted;
+}
+
+function getChunkStarts(clip: AnimationClipData): number[] {
+  let starts = (clip as any)._chunkStarts as number[] | undefined;
+  if (!starts) {
+    getSortedKeyframes(clip);
+    starts = (clip as any)._chunkStarts as number[];
+  }
+  return starts;
+}
+
+function findKeyframeIndex(chunkStarts: number[], targetTime: number): number {
+  let low = 0;
+  let high = chunkStarts.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (chunkStarts[mid] <= targetTime) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return Math.max(0, low - 1);
 }
 
 interface ClipEvaluationResult {
@@ -440,29 +464,31 @@ function evaluateClipTo(clip: AnimationClipData, localTime: number, outResult: C
     return;
   }
 
-  for (let i = 0; i < lastIdx; i++) {
-    const kfCurr = sortedKeyframes[i];
-    const kfNext = sortedKeyframes[i + 1];
-    if (effectiveTime >= kfCurr.time && effectiveTime <= kfNext.time) {
-      const segDuration = kfNext.time - kfCurr.time;
-      if (segDuration <= 0.0001) {
-        outResult.transform = kfNext.transform ?? DEFAULT_TRANSFORM;
-        outResult.opacity = kfNext.opacity ?? 1.0;
-        return;
-      }
-      const linearT = (effectiveTime - kfCurr.time) / segDuration;
-      const easedT = evaluateEasing(kfCurr.easing ?? Easing.Linear, kfCurr.cubic_params, linearT);
+  const chunkStarts = getChunkStarts(clip);
+  const idx = findKeyframeIndex(chunkStarts, effectiveTime);
+  const i = Math.min(idx, lastIdx - 1);
 
-      const currTrans = kfCurr.transform ?? DEFAULT_TRANSFORM;
-      const nextTrans = kfNext.transform ?? DEFAULT_TRANSFORM;
-      const currOpacity = kfCurr.opacity ?? 1.0;
-      const nextOpacity = kfNext.opacity ?? 1.0;
-
-      interpolateTransformTo(currTrans, nextTrans, easedT, scratchClipTransform);
-      outResult.transform = scratchClipTransform;
-      outResult.opacity = currOpacity + (nextOpacity - currOpacity) * easedT;
+  const kfCurr = sortedKeyframes[i];
+  const kfNext = sortedKeyframes[i + 1];
+  if (effectiveTime >= kfCurr.time && effectiveTime <= kfNext.time) {
+    const segDuration = kfNext.time - kfCurr.time;
+    if (segDuration <= 0.0001) {
+      outResult.transform = kfNext.transform ?? DEFAULT_TRANSFORM;
+      outResult.opacity = kfNext.opacity ?? 1.0;
       return;
     }
+    const linearT = (effectiveTime - kfCurr.time) / segDuration;
+    const easedT = evaluateEasing(kfCurr.easing ?? Easing.Linear, kfCurr.cubic_params, linearT);
+
+    const currTrans = kfCurr.transform ?? DEFAULT_TRANSFORM;
+    const nextTrans = kfNext.transform ?? DEFAULT_TRANSFORM;
+    const currOpacity = kfCurr.opacity ?? 1.0;
+    const nextOpacity = kfNext.opacity ?? 1.0;
+
+    interpolateTransformTo(currTrans, nextTrans, easedT, scratchClipTransform);
+    outResult.transform = scratchClipTransform;
+    outResult.opacity = currOpacity + (nextOpacity - currOpacity) * easedT;
+    return;
   }
 
   const kf = sortedKeyframes[lastIdx];

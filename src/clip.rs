@@ -4,6 +4,7 @@ use crate::types::{AnimationClipData, TransformData};
 #[derive(Debug, Clone)]
 pub struct AnimationClip {
     pub data: AnimationClipData,
+    pub chunk_starts: Vec<f64>,
     pub is_inflated: bool,
 }
 
@@ -11,6 +12,7 @@ impl AnimationClip {
     pub fn new(data: AnimationClipData) -> Self {
         let mut clip = Self {
             data,
+            chunk_starts: Vec::new(),
             is_inflated: false,
         };
         clip.inflate();
@@ -23,6 +25,7 @@ impl AnimationClip {
         }
         // Ensure keyframes are sorted by time
         self.data.keyframes.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+        self.chunk_starts = self.data.keyframes.iter().map(|kf| kf.time).collect();
         self.is_inflated = true;
     }
 
@@ -61,12 +64,12 @@ impl AnimationClip {
             return (kf.transform.clone(), kf.opacity);
         }
 
-        for i in 0..last_idx {
-            let kf_curr = &self.data.keyframes[i];
-            let kf_next = &self.data.keyframes[i + 1];
-            if effective_time >= kf_curr.time && effective_time <= kf_next.time {
-                return interpolate_keyframes(kf_curr, kf_next, effective_time);
-            }
+        let idx = self.chunk_starts.partition_point(|&t| t <= effective_time).saturating_sub(1);
+        let i = idx.min(last_idx - 1);
+        let kf_curr = &self.data.keyframes[i];
+        let kf_next = &self.data.keyframes[i + 1];
+        if effective_time >= kf_curr.time && effective_time <= kf_next.time {
+            return interpolate_keyframes(kf_curr, kf_next, effective_time);
         }
 
         let kf = &self.data.keyframes[last_idx];
