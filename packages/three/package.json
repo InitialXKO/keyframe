@@ -1,11 +1,11 @@
 {
   "name": "@keyframe-engine/three",
   "version": "1.0.0",
-  "description": "@keyframe-engine/three \u2014 Three.js Binding Adapter",
+  "description": "@keyframe-engine/three — Three.js Binding Adapter",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/adapters/three_adapter.js",
+  "module": "./dist/adapters/three_adapter.js",
+  "types": "./dist/adapters/three_adapter.d.ts",
   "scripts": {
     "build": "tsc"
   },
