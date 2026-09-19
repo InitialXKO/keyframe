@@ -567,6 +567,9 @@ test("JS Evaluator Zero-Allocation Heap Growth Test: getEvaluatedInstances and e
     const insts = engine.getEvaluatedInstances(timeMs, true);
     lastEvalFrameCount = evalFrame.count;
     lastInstsCount = insts.length;
+    if (f % 1000 === 0 && globalThis.gc) {
+      globalThis.gc();
+    }
   }
 
   assert.equal(lastEvalFrameCount, 100);
@@ -629,6 +632,9 @@ test("JS Evaluator Zero-Allocation Heap Growth Test: Dynamic instance array leng
 
     assert.equal(evalFrame.count, targetSize);
     assert.equal(insts.length, targetSize);
+    if (f % 1000 === 0 && globalThis.gc) {
+      globalThis.gc();
+    }
   }
 
   if (globalThis.gc) {
