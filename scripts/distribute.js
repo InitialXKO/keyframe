@@ -1,9 +1,13 @@
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const dist = resolve(root, "dist");
 const packages = resolve(root, "packages");
+
+// Sync root package.json version to all subpackage package.json files
+const rootPkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+const version = rootPkg.version;
 
 const copy = (packageName, source, destination = source) => {
   const from = resolve(dist, source);
@@ -51,6 +55,15 @@ for (const [packageName, entries] of Object.entries(files)) {
   for (const [source, destination = source] of entries) {
     copy(packageName, source, destination);
   }
+
+  const pkgJsonPath = resolve(packages, packageName, "package.json");
+  if (existsSync(pkgJsonPath)) {
+    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+    if (pkgJson.version !== version) {
+      pkgJson.version = version;
+      writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf8");
+    }
+  }
 }
 
-console.log("Distributed root build output to all publishable packages.");
+console.log(`Distributed root build output and synced version ${version} to all publishable packages.`);
