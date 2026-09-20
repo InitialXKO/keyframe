@@ -736,7 +736,7 @@ export class Engine {
     // Stage 2: WASM loading (if no existing instance)
     if (!this.wasmInstance) {
       options?.onProgress?.("wasm_loading");
-      const url = options?.wasmUrl || "https://cdn.jsdelivr.net/npm/@keyframe-engine/core/pkg/keyframe_engine_bg.wasm";
+      const url = options?.wasmUrl || "https://cdn.jsdelivr.net/npm/@keyframe-engine/core/dist/pkg/keyframe_engine_bg.wasm";
 
       const loadPromise = (async () => {
         let instance: any = null;
