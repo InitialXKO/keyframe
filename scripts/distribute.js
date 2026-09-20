@@ -10,7 +10,10 @@ const rootPkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 const version = rootPkg.version;
 
 const copy = (packageName, source, destination = source) => {
-  const from = resolve(dist, source);
+  let from = resolve(dist, source);
+  if (!existsSync(from)) {
+    from = resolve(root, source);
+  }
   const to = resolve(packages, packageName, "dist", destination);
 
   if (!existsSync(from)) {
@@ -36,6 +39,7 @@ const files = {
     ["opfs_storage.d.ts"],
     ["storage_adapter.js"],
     ["storage_adapter.d.ts"],
+    ["pkg"],
   ],
   controller: [["controller.js"], ["controller.d.ts"], ["controller.js", "index.js"], ["controller.d.ts", "index.d.ts"]],
   three: [["adapters/three_adapter.js"], ["adapters/three_adapter.d.ts"]],
