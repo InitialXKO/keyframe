@@ -50,6 +50,7 @@ jobs:
           test -f packages/core/dist/index.d.ts
           test -f packages/core/dist/core.js
           test -f packages/core/dist/web.js
+          test -f packages/core/dist/pkg/keyframe_engine_bg.wasm
           test -f packages/core/dist/builder/index.js
           test -f packages/controller/dist/index.js
           test -f packages/three/dist/adapters/three_adapter.js
