@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { resolve } from "node:path";
 
 import { Engine, Clip, Instance, Keyframe, Easing, BlendMode, TransformBuilder, Canvas2DRenderer, createRenderer, MemoryWriter, createSyncOPFSWriter, createAsyncOPFSWriter, createMemoryWriter, createOPFSWriter } from "../dist/index.js";
 import { spring, interpolate, interpolateColors, Sequence, Series, createRemotionAdapter, setRemotionFrameContext, useCurrentFrame } from "../dist/remotion/index.js";
@@ -925,4 +928,18 @@ test("Engine bakeStream with WASM mock & async callback support", async () => {
   assert.equal(streamCallCount, 1);
   assert.equal(asyncReceivedBytes, 2480);
   assert.equal(asyncTotal, 2480);
+});
+
+test("NPM Tarball verification: dist/pkg/keyframe_engine_bg.wasm exists, .gitignore does not, and npm pack includes WASM", () => {
+  const wasmPath = resolve("packages/core/dist/pkg/keyframe_engine_bg.wasm");
+  const gitignorePath = resolve("packages/core/dist/pkg/.gitignore");
+
+  assert.ok(existsSync(wasmPath), "packages/core/dist/pkg/keyframe_engine_bg.wasm must exist");
+  assert.equal(existsSync(gitignorePath), false, "packages/core/dist/pkg/.gitignore must NOT exist");
+
+  const output = execSync("npm pack --dry-run 2>&1", { cwd: resolve("packages/core"), encoding: "utf8" });
+  assert.ok(
+    output.includes("dist/pkg/keyframe_engine_bg.wasm"),
+    "npm pack output for @keyframe-engine/core must include dist/pkg/keyframe_engine_bg.wasm"
+  );
 });

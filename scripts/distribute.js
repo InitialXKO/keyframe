@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -58,6 +58,12 @@ const files = {
 for (const [packageName, entries] of Object.entries(files)) {
   for (const [source, destination = source] of entries) {
     copy(packageName, source, destination);
+  }
+
+  // Clean up any .gitignore files copied into dist (e.g. wasm-pack's pkg/.gitignore containing "*")
+  const pkgGitignore = resolve(packages, packageName, "dist", "pkg", ".gitignore");
+  if (existsSync(pkgGitignore)) {
+    rmSync(pkgGitignore, { force: true });
   }
 
   const pkgJsonPath = resolve(packages, packageName, "package.json");

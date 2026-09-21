@@ -1,0 +1,17 @@
+{
+  "name": "keyframe-engine",
+  "type": "module",
+  "description": "WASM Keyframe Animation Engine with WGSL Math & Remotion Compatibility",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "keyframe_engine_bg.wasm",
+    "keyframe_engine.js",
+    "keyframe_engine.d.ts"
+  ],
+  "main": "keyframe_engine.js",
+  "types": "keyframe_engine.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
