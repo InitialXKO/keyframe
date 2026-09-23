@@ -29,6 +29,10 @@
 ## 核心特性
 
 - **Rust WASM 计算内核与 $O(\log N)$ 二分查找**: 高吞吐量时间轴平坦化、预计算 Keyframe 分块边界 ($O(\log N)$ 二分快速查找)、三次贝塞尔曲线 (Cubic-Bezier) 缓动解算、四元数球面线性插值 (Slerp)、时间重映射 (Time Remapping) 与加性混合 (Additive Blending)。
+- **双路径动画复合 (AnimationStack & Value Seam)**:
+  - **Path A (构建期展开)**：在构建期/烘焙期将复合链展开为串联 Keyframes，自动完成值接缝 (Value Seam，即后段动画起点自动继承前段终态) 隐式解算，支持自适应曲率采样与零依赖静态输出。
+  - **Path B (运行时继承)**：基于 `BlendMode.Inherit` 与 `inherit_from: { source_instance_id }` 实现全状态/全属性轨道的动态运行时继承与追随。
+- **可扩展属性轨道抽象 (PropertyTrackRegistry)**：提供统一的属性轨道 Registry，支持注册自定义插值器 (如 `color_rgb`、`transform`、`opacity`、`number` 及用户自定义通道)。
 - **多 Instance 联动 (Multi-Instance Coupling)**:
   - **方案 A (声明式 DAG 依赖)**：通过 `Instance.prototype.dependsOn()` 设置 `onComplete` / `onStart` / `onKeyframe` 事件条件及偏移量，由引擎拓扑计算动态延时。
   - **方案 B (响应式 Apply Chain)**：通过 `Instance.prototype.bindTransformFrom()` 实现属性实时追随与空间变换绑定。
@@ -175,6 +179,32 @@ await engine.bakeStream(
   (chunk) => writer.write(chunk)
 );
 writer.close();
+```
+
+---
+
+### 1.1 动画复合与属性轨道 (`AnimationStack` & `PropertyTrackRegistry`)
+
+```typescript
+import { AnimationStack, PropertyTrackRegistry, Clip, Keyframe, Easing, TransformBuilder, Engine } from "@keyframe-engine/core";
+
+// 1. 注册自定义属性轨道插值器
+PropertyTrackRegistry.register("color_rgba", (a, b, t) => [
+  a[0] + (b[0] - a[0]) * t,
+  a[1] + (b[1] - a[1]) * t,
+  a[2] + (b[2] - a[2]) * t,
+  a[3] + (b[3] - a[3]) * t,
+]);
+
+// 2. 创建动画堆叠 (AnimationStack) — "堆叠即继承"
+const stack = new AnimationStack("character_movement")
+  .add(clipMoveRight)                         // 默认：Path A 静态展开 (构建期解算值接缝)
+  .add(clipMoveUp)                            // Path A：起点自动继承 moveRight 终态
+  .add(clipSpin, { dynamic: true });          // Path B：动态运行时继承 (BlendMode.Inherit)
+
+// 3. 将堆叠添加进动画引擎
+const engine = new Engine();
+engine.addStack(stack);
 ```
 
 ---
