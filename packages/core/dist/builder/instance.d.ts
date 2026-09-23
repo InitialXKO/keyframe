@@ -11,6 +11,7 @@ export declare class Instance {
     private _initialTransform;
     private _dependencies;
     private _transformBindings;
+    private _inheritFrom?;
     constructor(clipId: string, id?: string);
     opacity(o: number): this;
     visible(v: boolean): this;
@@ -29,5 +30,6 @@ export declare class Instance {
         targetProperty: string;
         offset?: number;
     }): this;
+    inheritFrom(sourceInstanceId: string, propertyTracks?: string[]): this;
     build(): InstanceData;
 }

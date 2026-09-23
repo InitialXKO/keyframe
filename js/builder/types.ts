@@ -27,6 +27,7 @@ export enum Easing {
 export enum BlendMode {
   Override = "Override",
   Additive = "Additive",
+  Inherit = "Inherit",
 }
 
 export enum EngineDirtyFlags {
@@ -105,6 +106,11 @@ export interface TransformBindingData {
   offset?: number;
 }
 
+export interface InheritFromData {
+  source_instance_id: string;
+  property_tracks?: string[];
+}
+
 export interface InstanceData {
   id: string;
   clip_id: string;
@@ -117,6 +123,7 @@ export interface InstanceData {
   initial_transform: TransformData;
   dependencies?: InstanceDependencyData[];
   transform_bindings?: TransformBindingData[];
+  inherit_from?: InheritFromData;
 }
 
 export interface TimelineNodeData {

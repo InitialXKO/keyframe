@@ -1,5 +1,6 @@
 import { AnimationClipData, EngineIR, EvaluatedFrameResult, EvaluatedInstance, InstanceData, PrepareOptions, TimelineNodeData } from "./types.js";
 import { Clip } from "./clip.js";
+import { AnimationStack, ExpandOptions } from "./stack.js";
 export { EvaluatedInstance, EvaluatedFrameResult, PrepareOptions } from "./types.js";
 import { Instance } from "./instance.js";
 export declare class Engine {
@@ -17,6 +18,7 @@ export declare class Engine {
     private dirtyFlags;
     private scratchInitialMat;
     private scratchClipMat;
+    private scratchLocalMat;
     private cachedClipIndexMap;
     private cachedScheduledMap;
     private cachedAdditiveFlags;
@@ -33,6 +35,7 @@ export declare class Engine {
     isDevToolsEnabled(): boolean;
     addClip(clip: Clip | AnimationClipData): this;
     addInstances(instances: (Instance | InstanceData)[]): this;
+    addStack(stack: AnimationStack, options?: ExpandOptions): this;
     setRootTimeline(node: TimelineNodeData): this;
     private validateIRCompatibility;
     prepare(options?: PrepareOptions): Promise<void>;
