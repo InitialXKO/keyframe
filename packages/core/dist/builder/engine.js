@@ -538,6 +538,7 @@ export class Engine {
     dirtyFlags = EngineDirtyFlags.DIRTY_ALL;
     scratchInitialMat = new Float32Array(16);
     scratchClipMat = new Float32Array(16);
+    scratchLocalMat = new Float32Array(16);
     cachedClipIndexMap = new Map();
     cachedScheduledMap = new Map();
     cachedAdditiveFlags = new Uint8Array(0);
@@ -619,6 +620,14 @@ export class Engine {
             }
         }
         this.dirtyFlags |= EngineDirtyFlags.DIRTY_INSTANCES;
+        return this;
+    }
+    addStack(stack, options) {
+        const ir = stack.expand(options);
+        for (const clip of ir.clips) {
+            this.addClip(clip);
+        }
+        this.addInstances(ir.instances);
         return this;
     }
     setRootTimeline(node) {
@@ -913,18 +922,33 @@ export class Engine {
             }
             writeTransformToMatrix(resolvedInitialTransform, this.scratchInitialMat, 0);
             writeTransformToMatrix(clipTransform, this.scratchClipMat, 0);
+            const isInherit = inst.blend_mode === BlendMode.Inherit || inst.blend_mode === "Inherit" || inst.blend_mode === "inherit" || !!inst.inherit_from;
+            let sourceInstIdx = -1;
+            if (isInherit && inst.inherit_from?.source_instance_id) {
+                sourceInstIdx = this.instances.findIndex((item) => item.id === inst.inherit_from.source_instance_id);
+            }
             const isAdditive = this.cachedAdditiveFlags[i] === 1;
-            if (!isAdditive) {
+            if (isInherit && sourceInstIdx >= 0 && sourceInstIdx < i) {
+                const sourceOffset = sourceInstIdx * floatsPerInst;
+                multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, this.scratchLocalMat, 0);
+                multiplyMatricesTo(floatView, sourceOffset, this.scratchLocalMat, 0, floatView, offset);
+                const sourceOpacity = floatView[sourceOffset + 16];
+                const instOpacity = inst.opacity ?? 1.0;
+                floatView[offset + 16] = sourceOpacity * instOpacity * clipOpacity;
+            }
+            else if (!isAdditive) {
                 multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
+                const instOpacity = inst.opacity ?? 1.0;
+                floatView[offset + 16] = instOpacity * clipOpacity;
             }
             else {
                 for (let k = 0; k < 16; k++) {
                     const identityVal = k % 5 === 0 ? 1 : 0;
                     floatView[offset + k] = this.scratchInitialMat[k] + (this.scratchClipMat[k] - identityVal);
                 }
+                const instOpacity = inst.opacity ?? 1.0;
+                floatView[offset + 16] = instOpacity * clipOpacity;
             }
-            const instOpacity = inst.opacity ?? 1.0;
-            floatView[offset + 16] = instOpacity * clipOpacity;
             uintView[offset + 17] = 1;
             uintView[offset + 18] = clipIdx;
             floatView[offset + 19] = 0;

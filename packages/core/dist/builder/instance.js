@@ -13,6 +13,7 @@ export class Instance {
     _initialTransform = new TransformBuilder().build();
     _dependencies = [];
     _transformBindings = [];
+    _inheritFrom;
     constructor(clipId, id) {
         this.clipId = clipId;
         this.id = id || `inst_${++instanceIdCounter}`;
@@ -63,6 +64,14 @@ export class Instance {
         });
         return this;
     }
+    inheritFrom(sourceInstanceId, propertyTracks) {
+        this._blendMode = BlendMode.Inherit;
+        this._inheritFrom = {
+            source_instance_id: sourceInstanceId,
+            property_tracks: propertyTracks ? [...propertyTracks] : undefined,
+        };
+        return this;
+    }
     build() {
         return {
             id: this.id,
@@ -76,6 +85,7 @@ export class Instance {
             initial_transform: this._initialTransform,
             dependencies: this._dependencies.length > 0 ? [...this._dependencies] : undefined,
             transform_bindings: this._transformBindings.length > 0 ? [...this._transformBindings] : undefined,
+            inherit_from: this._inheritFrom ? { ...this._inheritFrom } : undefined,
         };
     }
 }

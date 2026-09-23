@@ -19,6 +19,16 @@ impl Instance {
         clip: &AnimationClip,
         clip_index: u32,
     ) -> GpuInstanceData {
+        self.evaluate_with_source(global_time, clip, clip_index, None)
+    }
+
+    pub fn evaluate_with_source(
+        &self,
+        global_time: f64,
+        clip: &AnimationClip,
+        clip_index: u32,
+        source_data: Option<&GpuInstanceData>,
+    ) -> GpuInstanceData {
         if !self.data.visible || global_time < self.data.delay {
             return GpuInstanceData {
                 transform_matrix: Mat4::IDENTITY.to_cols_array(),
@@ -41,17 +51,28 @@ impl Instance {
         let initial_mat = transform_to_matrix(&self.data.initial_transform);
         let clip_mat = transform_to_matrix(&clip_transform);
 
-        let final_mat = match self.data.blend_mode {
-            BlendMode::Override => initial_mat * clip_mat,
-            BlendMode::Additive => {
-                // Additive matrix composition
-                initial_mat + (clip_mat - Mat4::IDENTITY)
+        let is_inherit = self.data.blend_mode == BlendMode::Inherit || self.data.inherit_from.is_some();
+
+        let (final_mat, final_opacity) = if is_inherit {
+            if let Some(src) = source_data {
+                let src_mat = Mat4::from_cols_array(&src.transform_matrix);
+                let current_mat = initial_mat * clip_mat;
+                (src_mat * current_mat, src.opacity * self.data.opacity * clip_opacity)
+            } else {
+                (initial_mat * clip_mat, self.data.opacity * clip_opacity)
             }
+        } else {
+            let mat = match self.data.blend_mode {
+                BlendMode::Override => initial_mat * clip_mat,
+                BlendMode::Additive => initial_mat + (clip_mat - Mat4::IDENTITY),
+                BlendMode::Inherit => initial_mat * clip_mat,
+            };
+            (mat, self.data.opacity * clip_opacity)
         };
 
         GpuInstanceData {
             transform_matrix: final_mat.to_cols_array(),
-            opacity: self.data.opacity * clip_opacity,
+            opacity: final_opacity,
             visible: 1,
             clip_index,
             _padding: 0,

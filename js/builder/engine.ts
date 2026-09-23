@@ -2,6 +2,7 @@ import { AnimationClipData, BlendMode, CubicBezierParams, Easing, EngineDirtyFla
 import { Clip } from "./clip.js";
 import { OPFSStorage } from "../opfs_storage.js";
 import { globalBufferPool, globalInstancePool } from "./buffer_pool.js";
+import { AnimationStack, ExpandOptions } from "./stack.js";
 
 export { EvaluatedInstance, EvaluatedFrameResult, PrepareOptions } from "./types.js";
 import { Instance } from "./instance.js";
@@ -603,6 +604,7 @@ export class Engine {
   private dirtyFlags: number = EngineDirtyFlags.DIRTY_ALL;
   private scratchInitialMat = new Float32Array(16);
   private scratchClipMat = new Float32Array(16);
+  private scratchLocalMat = new Float32Array(16);
   private cachedClipIndexMap: Map<string, number> = new Map();
   private cachedScheduledMap: Map<string, number> = new Map();
   private cachedAdditiveFlags: Uint8Array = new Uint8Array(0);
@@ -694,6 +696,15 @@ export class Engine {
       }
     }
     this.dirtyFlags |= EngineDirtyFlags.DIRTY_INSTANCES;
+    return this;
+  }
+
+  public addStack(stack: AnimationStack, options?: ExpandOptions): this {
+    const ir = stack.expand(options);
+    for (const clip of ir.clips) {
+      this.addClip(clip);
+    }
+    this.addInstances(ir.instances);
     return this;
   }
 
@@ -1017,18 +1028,33 @@ export class Engine {
       writeTransformToMatrix(resolvedInitialTransform, this.scratchInitialMat, 0);
       writeTransformToMatrix(clipTransform, this.scratchClipMat, 0);
 
+      const isInherit = inst.blend_mode === BlendMode.Inherit || inst.blend_mode === "Inherit" || inst.blend_mode === "inherit" || !!inst.inherit_from;
+      let sourceInstIdx = -1;
+      if (isInherit && inst.inherit_from?.source_instance_id) {
+        sourceInstIdx = this.instances.findIndex((item) => item.id === inst.inherit_from!.source_instance_id);
+      }
+
       const isAdditive = this.cachedAdditiveFlags[i] === 1;
-      if (!isAdditive) {
+      if (isInherit && sourceInstIdx >= 0 && sourceInstIdx < i) {
+        const sourceOffset = sourceInstIdx * floatsPerInst;
+        multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, this.scratchLocalMat, 0);
+        multiplyMatricesTo(floatView, sourceOffset, this.scratchLocalMat, 0, floatView, offset);
+        const sourceOpacity = floatView[sourceOffset + 16];
+        const instOpacity = inst.opacity ?? 1.0;
+        floatView[offset + 16] = sourceOpacity * instOpacity * clipOpacity;
+      } else if (!isAdditive) {
         multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
+        const instOpacity = inst.opacity ?? 1.0;
+        floatView[offset + 16] = instOpacity * clipOpacity;
       } else {
         for (let k = 0; k < 16; k++) {
           const identityVal = k % 5 === 0 ? 1 : 0;
           floatView[offset + k] = this.scratchInitialMat[k] + (this.scratchClipMat[k] - identityVal);
         }
+        const instOpacity = inst.opacity ?? 1.0;
+        floatView[offset + 16] = instOpacity * clipOpacity;
       }
 
-      const instOpacity = inst.opacity ?? 1.0;
-      floatView[offset + 16] = instOpacity * clipOpacity;
       uintView[offset + 17] = 1;
       uintView[offset + 18] = clipIdx;
       floatView[offset + 19] = 0;

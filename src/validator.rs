@@ -82,6 +82,15 @@ impl Validator {
                     inst.id, inst.clip_id
                 ));
             }
+            if let Some(info) = &inst.inherit_from {
+                let src_found = instances.iter().any(|i| i.id == info.source_instance_id);
+                if !src_found {
+                    return Err(format!(
+                        "Instance '{}' inherits from source_instance_id '{}' which does not exist",
+                        inst.id, info.source_instance_id
+                    ));
+                }
+            }
         }
         Ok(())
     }

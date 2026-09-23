@@ -28,6 +28,7 @@ export var BlendMode;
 (function (BlendMode) {
     BlendMode["Override"] = "Override";
     BlendMode["Additive"] = "Additive";
+    BlendMode["Inherit"] = "Inherit";
 })(BlendMode || (BlendMode = {}));
 export var EngineDirtyFlags;
 (function (EngineDirtyFlags) {

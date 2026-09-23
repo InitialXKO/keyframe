@@ -87,6 +87,8 @@ impl EngineState {
             scheduled_map.insert(item.instance_id, item.absolute_start_time);
         }
 
+        let mut evaluated_map: HashMap<String, usize> = HashMap::new();
+
         for inst in &self.instances {
             if let Some(clip) = self.clips.get(&inst.data.clip_id) {
                 let clip_idx = *self.clip_index_map.get(&inst.data.clip_id).unwrap_or(&0);
@@ -96,8 +98,14 @@ impl EngineState {
                     inst_to_eval.data.delay += timeline_start;
                 }
 
-                let gpu_inst = inst_to_eval.evaluate(global_time, clip, clip_idx);
+                let source_gpu_inst = inst.data.inherit_from.as_ref().and_then(|info| {
+                    evaluated_map.get(&info.source_instance_id).map(|&idx| &self.evaluated_gpu_instances[idx])
+                });
+
+                let gpu_inst = inst_to_eval.evaluate_with_source(global_time, clip, clip_idx, source_gpu_inst);
+                let current_idx = self.evaluated_gpu_instances.len();
                 self.evaluated_gpu_instances.push(gpu_inst);
+                evaluated_map.insert(inst.data.id.clone(), current_idx);
             }
         }
 

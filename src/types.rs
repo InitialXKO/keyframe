@@ -36,6 +36,8 @@ pub enum BlendMode {
     Override,
     #[serde(alias = "lighter", alias = "additive")]
     Additive,
+    #[serde(alias = "inherit")]
+    Inherit,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +147,13 @@ pub struct TransformBindingData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InheritFromData {
+    pub source_instance_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub property_tracks: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstanceData {
     pub id: String,
     pub clip_id: String,
@@ -161,6 +170,8 @@ pub struct InstanceData {
     pub dependencies: Option<Vec<InstanceDependencyData>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transform_bindings: Option<Vec<TransformBindingData>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherit_from: Option<InheritFromData>,
 }
 
 pub const INSTANCE_SIZE: usize = 80;

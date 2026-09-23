@@ -1,4 +1,4 @@
-import { BlendMode, InstanceData, InstanceDependencyData, TransformBindingData, TransformData } from "./types.js";
+import { BlendMode, InheritFromData, InstanceData, InstanceDependencyData, TransformBindingData, TransformData } from "./types.js";
 import { TransformBuilder } from "./transform.js";
 
 let instanceIdCounter = 0;
@@ -15,6 +15,7 @@ export class Instance {
   private _initialTransform: TransformData = new TransformBuilder().build();
   private _dependencies: InstanceDependencyData[] = [];
   private _transformBindings: TransformBindingData[] = [];
+  private _inheritFrom?: InheritFromData;
 
   constructor(clipId: string, id?: string) {
     this.clipId = clipId;
@@ -90,6 +91,15 @@ export class Instance {
     return this;
   }
 
+  public inheritFrom(sourceInstanceId: string, propertyTracks?: string[]): this {
+    this._blendMode = BlendMode.Inherit;
+    this._inheritFrom = {
+      source_instance_id: sourceInstanceId,
+      property_tracks: propertyTracks ? [...propertyTracks] : undefined,
+    };
+    return this;
+  }
+
   public build(): InstanceData {
     return {
       id: this.id,
@@ -103,6 +113,7 @@ export class Instance {
       initial_transform: this._initialTransform,
       dependencies: this._dependencies.length > 0 ? [...this._dependencies] : undefined,
       transform_bindings: this._transformBindings.length > 0 ? [...this._transformBindings] : undefined,
+      inherit_from: this._inheritFrom ? { ...this._inheritFrom } : undefined,
     };
   }
 }
