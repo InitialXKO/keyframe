@@ -929,12 +929,22 @@ export class Engine {
             }
             const isAdditive = this.cachedAdditiveFlags[i] === 1;
             if (isInherit && sourceInstIdx >= 0 && sourceInstIdx < i) {
+                const tracks = inst.inherit_from?.property_tracks;
+                const inheritTransform = !tracks || tracks.length === 0 || tracks.includes("transform");
+                const inheritOpacity = !tracks || tracks.length === 0 || tracks.includes("opacity");
                 const sourceOffset = sourceInstIdx * floatsPerInst;
                 multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, this.scratchLocalMat, 0);
-                multiplyMatricesTo(floatView, sourceOffset, this.scratchLocalMat, 0, floatView, offset);
+                if (inheritTransform) {
+                    multiplyMatricesTo(floatView, sourceOffset, this.scratchLocalMat, 0, floatView, offset);
+                }
+                else {
+                    for (let k = 0; k < 16; k++) {
+                        floatView[offset + k] = this.scratchLocalMat[k];
+                    }
+                }
                 const sourceOpacity = floatView[sourceOffset + 16];
                 const instOpacity = inst.opacity ?? 1.0;
-                floatView[offset + 16] = sourceOpacity * instOpacity * clipOpacity;
+                floatView[offset + 16] = (inheritOpacity ? sourceOpacity : 1.0) * instOpacity * clipOpacity;
             }
             else if (!isAdditive) {
                 multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);

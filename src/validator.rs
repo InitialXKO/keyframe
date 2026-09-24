@@ -74,6 +74,8 @@ impl Validator {
         instances: &[InstanceData],
         clips: &[AnimationClipData],
     ) -> Result<(), String> {
+        let mut seen_instance_ids = std::collections::HashSet::new();
+
         for inst in instances {
             let found = clips.iter().any(|c| c.id == inst.clip_id);
             if !found {
@@ -83,14 +85,23 @@ impl Validator {
                 ));
             }
             if let Some(info) = &inst.inherit_from {
-                let src_found = instances.iter().any(|i| i.id == info.source_instance_id);
+                let src_found = seen_instance_ids.contains(&info.source_instance_id);
                 if !src_found {
-                    return Err(format!(
-                        "Instance '{}' inherits from source_instance_id '{}' which does not exist",
-                        inst.id, info.source_instance_id
-                    ));
+                    let exists_later = instances.iter().any(|i| i.id == info.source_instance_id);
+                    if exists_later {
+                        return Err(format!(
+                            "Topological order violation: Inheriting instance '{}' references source_instance_id '{}' which appears after '{}' in instances array",
+                            inst.id, info.source_instance_id, inst.id
+                        ));
+                    } else {
+                        return Err(format!(
+                            "Instance '{}' inherits from source_instance_id '{}' which does not exist",
+                            inst.id, info.source_instance_id
+                        ));
+                    }
                 }
             }
+            seen_instance_ids.insert(inst.id.clone());
         }
         Ok(())
     }

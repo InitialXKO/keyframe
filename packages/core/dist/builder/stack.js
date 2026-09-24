@@ -118,23 +118,47 @@ export function expandStack(source, options) {
             if (options?.adaptiveSampling && expandedKeyframes.length > 1) {
                 const threshold = options.maxErrorThreshold ?? 1e-4;
                 const sampledKfs = [];
+                function subdivide(kf1, kf2, depth = 0, maxDepth = 4) {
+                    if (depth >= maxDepth)
+                        return;
+                    const t1 = kf1.time;
+                    const t2 = kf2.time;
+                    if (t2 - t1 <= 1)
+                        return;
+                    const midTime = (t1 + t2) / 2;
+                    const normT = (midTime - t1) / (t2 - t1);
+                    // Interpolate factor based on easing
+                    let factor = normT;
+                    if (kf1.easing === "Ease" || kf1.easing === "EaseInOut") {
+                        factor = 3 * (1 - normT) * normT * normT * 0.58 + normT * normT * normT;
+                    }
+                    else if (kf1.easing === "EaseIn") {
+                        factor = normT * normT;
+                    }
+                    else if (kf1.easing === "EaseOut") {
+                        factor = normT * (2 - normT);
+                    }
+                    const actualTrans = PropertyTrackRegistry.interpolate("transform", kf1.transform, kf2.transform, factor);
+                    const linearTrans = PropertyTrackRegistry.interpolate("transform", kf1.transform, kf2.transform, normT);
+                    const err = Math.hypot(actualTrans.translation[0] - linearTrans.translation[0], actualTrans.translation[1] - linearTrans.translation[1], actualTrans.translation[2] - linearTrans.translation[2]);
+                    if (err > threshold) {
+                        const midOp = kf1.opacity + ((kf2.opacity ?? 1.0) - kf1.opacity) * factor;
+                        const midKf = {
+                            time: midTime,
+                            transform: actualTrans,
+                            opacity: midOp,
+                            easing: kf1.easing,
+                        };
+                        subdivide(kf1, midKf, depth + 1, maxDepth);
+                        sampledKfs.push(midKf);
+                        subdivide(midKf, kf2, depth + 1, maxDepth);
+                    }
+                }
                 for (let k = 0; k < expandedKeyframes.length - 1; k++) {
                     const kf1 = expandedKeyframes[k];
                     const kf2 = expandedKeyframes[k + 1];
                     sampledKfs.push(kf1);
-                    // Subdivide if non-linear curve
-                    if (kf1.easing !== "Linear" || kf1.springConfig) {
-                        const midTime = (kf1.time + kf2.time) / 2;
-                        const factor = 0.5;
-                        const midTrans = PropertyTrackRegistry.interpolate("transform", kf1.transform, kf2.transform, factor);
-                        const midOp = kf1.opacity + (kf2.opacity - kf1.opacity) * factor;
-                        sampledKfs.push({
-                            time: midTime,
-                            transform: midTrans,
-                            opacity: midOp,
-                            easing: kf1.easing,
-                        });
-                    }
+                    subdivide(kf1, kf2, 0, 4);
                 }
                 sampledKfs.push(expandedKeyframes[expandedKeyframes.length - 1]);
                 expandedKeyframes.length = 0;

@@ -400,6 +400,134 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_partial_property_tracks_inheritance() {
+        let mut engine = EngineState::new();
+        let clip_data = AnimationClipData {
+            id: "clip1".to_string(),
+            duration: 1000.0,
+            iterations: 1.0,
+            keyframes: vec![
+                KeyframeData {
+                    time: 0.0,
+                    transform: TransformData::default(),
+                    opacity: 1.0,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+                KeyframeData {
+                    time: 1000.0,
+                    transform: TransformData {
+                        translation: [50.0, 0.0, 0.0],
+                        ..Default::default()
+                    },
+                    opacity: 0.8,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+            ],
+            metadata: None,
+        };
+        engine.add_clip(clip_data).unwrap();
+
+        let inst1 = InstanceData {
+            id: "inst1".to_string(),
+            clip_id: "clip1".to_string(),
+            opacity: 1.0,
+            visible: true,
+            delay: 0.0,
+            duration_scale: 1.0,
+            time_remapping_speed: 1.0,
+            blend_mode: BlendMode::Override,
+            initial_transform: TransformData::default(),
+            dependencies: None,
+            transform_bindings: None,
+            inherit_from: None,
+        };
+
+        // inst2 inherits ONLY opacity, NOT transform
+        let inst2 = InstanceData {
+            id: "inst2".to_string(),
+            clip_id: "clip1".to_string(),
+            opacity: 0.5,
+            visible: true,
+            delay: 1000.0,
+            duration_scale: 1.0,
+            time_remapping_speed: 1.0,
+            blend_mode: BlendMode::Inherit,
+            initial_transform: TransformData::default(),
+            dependencies: None,
+            transform_bindings: None,
+            inherit_from: Some(keyframe_engine::types::InheritFromData {
+                source_instance_id: "inst1".to_string(),
+                property_tracks: Some(vec!["opacity".to_string()]),
+            }),
+        };
+
+        engine.add_instance(inst1).unwrap();
+        engine.add_instance(inst2).unwrap();
+
+        let gpu_insts = engine.evaluate_frame(1500.0);
+        assert_eq!(gpu_insts.len(), 2);
+
+        // inst2 does NOT inherit inst1 transform (x=50), so local x=25
+        let inst2_mat = gpu_insts[1].transform_matrix;
+        assert!((inst2_mat[12] - 25.0).abs() < 1e-3);
+        // inst2 DOES inherit inst1 opacity (0.8 * 0.5 * 0.9 = 0.36)
+        assert!((gpu_insts[1].opacity - 0.36).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_topological_order_validation_error() {
+        use keyframe_engine::validator::Validator;
+
+        let clip_data = AnimationClipData {
+            id: "clip1".to_string(),
+            duration: 1000.0,
+            iterations: 1.0,
+            keyframes: vec![],
+            metadata: None,
+        };
+
+        let inst1 = InstanceData {
+            id: "inst1".to_string(),
+            clip_id: "clip1".to_string(),
+            opacity: 1.0,
+            visible: true,
+            delay: 0.0,
+            duration_scale: 1.0,
+            time_remapping_speed: 1.0,
+            blend_mode: BlendMode::Override,
+            initial_transform: TransformData::default(),
+            dependencies: None,
+            transform_bindings: None,
+            inherit_from: None,
+        };
+
+        let inst2 = InstanceData {
+            id: "inst2".to_string(),
+            clip_id: "clip1".to_string(),
+            opacity: 1.0,
+            visible: true,
+            delay: 0.0,
+            duration_scale: 1.0,
+            time_remapping_speed: 1.0,
+            blend_mode: BlendMode::Inherit,
+            initial_transform: TransformData::default(),
+            dependencies: None,
+            transform_bindings: None,
+            inherit_from: Some(keyframe_engine::types::InheritFromData {
+                source_instance_id: "inst1".to_string(),
+                property_tracks: None,
+            }),
+        };
+
+        // Reversed order: inst2 before inst1
+        let res = Validator::validate_clip_references(&[inst2, inst1], &[clip_data]);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("Topological order violation"));
+    }
+
+    #[test]
     fn test_additive_and_time_remapping() {
         let mut engine = EngineState::new();
         let clip_data = AnimationClipData {

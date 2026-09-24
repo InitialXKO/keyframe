@@ -243,3 +243,64 @@ test('Issue #49: Consistency Matrix — Expander (Path A) vs Runtime Inheritance
     );
   }
 });
+
+test('Issue #51: Partial property_tracks inheritance in JS evaluator', async () => {
+  const clip1 = new Clip('c1').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(10, 0, 0).build(),
+    opacity: 1,
+  }).addKeyframe({
+    time: 1000,
+    transform: new TransformBuilder().translate(50, 0, 0).build(),
+    opacity: 0.8,
+  });
+
+  const inst1 = new Instance('c1', 'i1').delay(0);
+  const inst2 = new Instance('c1', 'i2').delay(1000).inheritFrom('i1', ['opacity']); // Only inherit opacity, not transform
+
+  const engine = new Engine();
+  engine.addClip(clip1);
+  engine.addInstances([inst1, inst2]);
+  engine.prepared = true;
+
+  const evaluated = engine.getEvaluatedInstances(1500);
+  assert.equal(evaluated.length, 2);
+
+  // inst2 translation.x should NOT inherit inst1 (x=50), so local translation x = 30 (halfway between x=10 and x=50)
+  assert.ok(Math.abs(evaluated[1].transformMatrix[12] - 30) < 1e-3);
+  // inst2 opacity DOES inherit inst1 (0.8 * 1 * 0.9 = 0.72)
+  assert.ok(Math.abs(evaluated[1].opacity - 0.72) < 1e-3);
+});
+
+test('Issue #51: Topological order violation validation', () => {
+  const clip1 = new Clip('c1').duration(1000).addKeyframe({ time: 0, transform: new TransformBuilder().build() });
+  const inst1 = new Instance('c1', 'i1').delay(0);
+  const inst2 = new Instance('c1', 'i2').delay(1000).inheritFrom('i1');
+
+  // Valid order: i1 then i2
+  const validRes = Validator.validateReferences([inst1, inst2], [clip1]);
+  assert.equal(validRes.ok, true);
+
+  // Invalid order: i2 before i1
+  const invalidRes = Validator.validateReferences([inst2, inst1], [clip1]);
+  assert.equal(invalidRes.ok, false);
+  assert.match(invalidRes.error || '', /Topological order violation/);
+});
+
+test('Issue #51: Adaptive sampling recursive subdivision with maxErrorThreshold', () => {
+  const clip = new Clip('curved').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(0, 0, 0).build(),
+    easing: Easing.EaseInOut,
+  }).addKeyframe({
+    time: 1000,
+    transform: new TransformBuilder().translate(100, 100, 0).build(),
+  });
+
+  const stack = new AnimationStack('s_curved').add(clip);
+  const irCoarse = stack.expand({ adaptiveSampling: true, maxErrorThreshold: 1e-1 });
+  const irFine = stack.expand({ adaptiveSampling: true, maxErrorThreshold: 1e-5 });
+
+  // Finer maxErrorThreshold yields more keyframes
+  assert.ok(irFine.clips[0].keyframes.length >= irCoarse.clips[0].keyframes.length);
+});

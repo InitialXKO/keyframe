@@ -63,16 +63,23 @@ export class Validator {
     const instances = instancesInput.map((i) => typeof (i as any).build === 'function' ? (i as Instance).build() : (i as InstanceData));
 
     const clipIds = new Set(clips.map((c) => c.id));
-    const instanceIds = new Set(instances.map((i) => i.id));
+    const seenInstanceIds = new Set<string>();
+
     for (const inst of instances) {
       if (!clipIds.has(inst.clip_id)) {
         return { ok: false, error: `Instance '${inst.id}' references clip_id '${inst.clip_id}' which does not exist` };
       }
       if (inst.inherit_from && inst.inherit_from.source_instance_id) {
-        if (!instanceIds.has(inst.inherit_from.source_instance_id)) {
-          return { ok: false, error: `Instance '${inst.id}' inherits from source_instance_id '${inst.inherit_from.source_instance_id}' which does not exist` };
+        const srcId = inst.inherit_from.source_instance_id;
+        if (!seenInstanceIds.has(srcId)) {
+          const existsLater = instances.some((i) => i.id === srcId);
+          if (existsLater) {
+            return { ok: false, error: `Topological order violation: Inheriting instance '${inst.id}' references source_instance_id '${srcId}' which appears after '${inst.id}' in instances array` };
+          }
+          return { ok: false, error: `Instance '${inst.id}' inherits from source_instance_id '${srcId}' which does not exist` };
         }
       }
+      seenInstanceIds.add(inst.id);
     }
     return { ok: true };
   }
