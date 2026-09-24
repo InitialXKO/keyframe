@@ -97,6 +97,23 @@ PropertyTrackRegistry.register("color_rgb", (a, b, factor) => {
         a[2] + (b[2] - a[2]) * factor,
     ];
 });
+PropertyTrackRegistry.register("path_points", (a, b, factor) => {
+    if (!Array.isArray(a) || !Array.isArray(b))
+        return factor >= 1 ? b : a;
+    const len = Math.min(a.length, b.length);
+    const result = [];
+    for (let i = 0; i < len; i++) {
+        const ptA = a[i];
+        const ptB = b[i];
+        if (Array.isArray(ptA) && Array.isArray(ptB)) {
+            result.push(ptA.map((val, idx) => val + ((ptB[idx] ?? val) - val) * factor));
+        }
+        else {
+            result.push(ptB);
+        }
+    }
+    return result;
+});
 PropertyTrackRegistry.register("color", (a, b, factor) => {
     return [
         a[0] + (b[0] - a[0]) * factor,

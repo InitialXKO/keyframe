@@ -717,4 +717,89 @@ mod unit_tests {
         assert_eq!(flattened[1].instance_id, "inst2");
         assert_eq!(flattened[1].absolute_start_time, 200.0);
     }
+
+    #[test]
+    fn test_rust_kernel_evaluate_with_source_inherit() {
+        use keyframe_engine::clip::AnimationClip;
+        use keyframe_engine::instance::Instance;
+        use keyframe_engine::types::InheritFromData;
+
+        let clip_data = AnimationClipData {
+            id: "clip_1".to_string(),
+            duration: 1000.0,
+            iterations: 1.0,
+            keyframes: vec![
+                KeyframeData {
+                    time: 0.0,
+                    transform: TransformData {
+                        translation: [10.0, 0.0, 0.0],
+                        rotation_quat: [0.0, 0.0, 0.0, 1.0],
+                        scale: [1.0, 1.0, 1.0],
+                        origin: [0.0, 0.0, 0.0],
+                    },
+                    opacity: 0.8,
+                    easing: EasingType::Linear,
+                    cubic_params: None,
+                },
+            ],
+            metadata: None,
+        };
+        let clip = AnimationClip::new(clip_data);
+
+        let src_gpu_inst = GpuInstanceData {
+            transform_matrix: glam::Mat4::from_translation(glam::vec3(100.0, 0.0, 0.0)).to_cols_array(),
+            opacity: 0.5,
+            visible: 1,
+            clip_index: 0,
+            _padding: 0,
+        };
+
+        // 1. Full inheritance (default)
+        let mut inst_data = InstanceData {
+            id: "inst_2".to_string(),
+            clip_id: "clip_1".to_string(),
+            delay: 0.0,
+            duration_scale: 1.0,
+            time_remapping_speed: 1.0,
+            initial_transform: TransformData {
+                translation: [0.0, 0.0, 0.0],
+                rotation_quat: [0.0, 0.0, 0.0, 1.0],
+                scale: [1.0, 1.0, 1.0],
+                origin: [0.0, 0.0, 0.0],
+            },
+            blend_mode: BlendMode::Inherit,
+            opacity: 1.0,
+            visible: true,
+            dependencies: None,
+            transform_bindings: None,
+            inherit_from: Some(InheritFromData {
+                source_instance_id: "inst_1".to_string(),
+                property_tracks: None,
+            }),
+        };
+        let inst = Instance::new(inst_data.clone());
+        let res = inst.evaluate_with_source(0.0, &clip, 0, Some(&src_gpu_inst));
+        assert!((res.transform_matrix[12] - 110.0).abs() < 1e-4);
+        assert!((res.opacity - 0.4).abs() < 1e-4);
+
+        // 2. Partial inheritance: opacity track only
+        inst_data.inherit_from = Some(InheritFromData {
+            source_instance_id: "inst_1".to_string(),
+            property_tracks: Some(vec!["opacity".to_string()]),
+        });
+        let inst_op_only = Instance::new(inst_data.clone());
+        let res_op = inst_op_only.evaluate_with_source(0.0, &clip, 0, Some(&src_gpu_inst));
+        assert!((res_op.transform_matrix[12] - 10.0).abs() < 1e-4);
+        assert!((res_op.opacity - 0.4).abs() < 1e-4);
+
+        // 3. Partial inheritance: transform track only
+        inst_data.inherit_from = Some(InheritFromData {
+            source_instance_id: "inst_1".to_string(),
+            property_tracks: Some(vec!["transform".to_string()]),
+        });
+        let inst_tr_only = Instance::new(inst_data);
+        let res_tr = inst_tr_only.evaluate_with_source(0.0, &clip, 0, Some(&src_gpu_inst));
+        assert!((res_tr.transform_matrix[12] - 110.0).abs() < 1e-4);
+        assert!((res_tr.opacity - 0.8).abs() < 1e-4);
+    }
 }

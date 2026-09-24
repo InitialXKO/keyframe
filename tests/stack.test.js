@@ -126,6 +126,105 @@ test('Issue #49: AnimationStack static expansion (Path A) value seam resolution'
   assert.equal(irIdempotent.clips.length, 2);
 });
 
+test('Issue #51: Validator topological ordering and property_tracks validation', () => {
+  const clip = new Clip('c1').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(0, 0, 0).build(),
+    opacity: 1,
+    easing: Easing.Linear,
+  });
+
+  const inst1 = new Instance('c1', 'i1').delay(0);
+  const inst2 = new Instance('c1', 'i2').delay(1000).inheritFrom('i1', ['invalid_track_name']);
+
+  // Invalid property track name
+  const valTrackRes = Validator.validateReferences([inst1, inst2], [clip]);
+  assert.equal(valTrackRes.ok, false);
+  assert.match(valTrackRes.error || '', /invalid_track_name/);
+
+  // Reversed topological order
+  const inst2ValidTracks = new Instance('c1', 'i2').delay(1000).inheritFrom('i1', ['transform']);
+  const valTopoRes = Validator.validateReferences([inst2ValidTracks, inst1], [clip]);
+  assert.equal(valTopoRes.ok, false);
+  assert.match(valTopoRes.error || '', /topological order/);
+});
+
+test('Issue #51: property_tracks selective inheritance evaluation', async () => {
+  const clip1 = new Clip('c1').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(100, 0, 0).build(),
+    opacity: 0.5,
+    easing: Easing.Linear,
+  });
+
+  const clip2 = new Clip('c2').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(10, 0, 0).build(),
+    opacity: 0.8,
+    easing: Easing.Linear,
+  });
+
+  const inst1 = new Instance('c1', 'inst_1').delay(0);
+  const inst2OpOnly = new Instance('c2', 'inst_2').delay(0).inheritFrom('inst_1', ['opacity']);
+
+  const engine = new Engine();
+  engine.addClip(clip1);
+  engine.addClip(clip2);
+  engine.addInstances([inst1, inst2OpOnly]);
+  engine.prepared = true;
+
+  const res = engine.getEvaluatedInstances(0);
+  // inst_2 inherits opacity (0.5 * 1.0 * 0.8 = 0.4) but NOT transform (remains local tx = 10)
+  assert.ok(Math.abs(res[1].transformMatrix[12] - 10) < 1e-3, `Expected tx=10, got ${res[1].transformMatrix[12]}`);
+  assert.ok(Math.abs(res[1].opacity - 0.4) < 1e-3, `Expected opacity=0.4, got ${res[1].opacity}`);
+});
+
+test('Issue #51: Spring keyframe consistency matrix (Path A vs Path B)', async () => {
+  const springCfg = { damping: 12, stiffness: 150, mass: 1 };
+  const clipSpring = new Clip('c_spring').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(0, 0, 0).build(),
+    opacity: 1,
+    easing: Easing.Linear,
+  }).addKeyframe({
+    time: 1000,
+    transform: new TransformBuilder().translate(100, 0, 0).build(),
+    opacity: 1,
+    easing: Easing.Linear,
+    springConfig: springCfg,
+  });
+
+  const clip2 = new Clip('c_second').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(0, 0, 0).build(),
+    opacity: 1,
+    easing: Easing.Linear,
+  }).addKeyframe({
+    time: 1000,
+    transform: new TransformBuilder().translate(50, 0, 0).build(),
+    opacity: 1,
+    easing: Easing.Linear,
+  });
+
+  const stackA = new AnimationStack('stack_spring_a').add(clipSpring).add(clip2, { dynamic: false });
+  const stackB = new AnimationStack('stack_spring_b').add(clipSpring).add(clip2, { dynamic: true });
+
+  const engineA = new Engine();
+  engineA.addStack(stackA);
+  engineA.prepared = true;
+
+  const engineB = new Engine();
+  engineB.addStack(stackB);
+  engineB.prepared = true;
+
+  // Compare second segment end at t = 2000
+  const instA = engineA.getEvaluatedInstances(2000)[1];
+  const instB = engineB.getEvaluatedInstances(2000)[1];
+
+  const diff = Math.abs(instA.transformMatrix[12] - instB.transformMatrix[12]);
+  assert.ok(diff < 1e-3, `Spring end state mismatch between Path A (${instA.transformMatrix[12]}) and Path B (${instB.transformMatrix[12]}), diff=${diff}`);
+});
+
 test('Issue #49: AnimationStack dynamic expansion (Path B) and Runtime Inheritance evaluation', async () => {
   const clipA = new Clip('c_a').duration(1000).addKeyframe({
     time: 0,

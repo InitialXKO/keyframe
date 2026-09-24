@@ -63,14 +63,31 @@ export class Validator {
     const instances = instancesInput.map((i) => typeof (i as any).build === 'function' ? (i as Instance).build() : (i as InstanceData));
 
     const clipIds = new Set(clips.map((c) => c.id));
-    const instanceIds = new Set(instances.map((i) => i.id));
-    for (const inst of instances) {
+    const instanceMap = new Map<string, number>();
+    for (let idx = 0; idx < instances.length; idx++) {
+      instanceMap.set(instances[idx].id, idx);
+    }
+
+    for (let idx = 0; idx < instances.length; idx++) {
+      const inst = instances[idx];
       if (!clipIds.has(inst.clip_id)) {
         return { ok: false, error: `Instance '${inst.id}' references clip_id '${inst.clip_id}' which does not exist` };
       }
       if (inst.inherit_from && inst.inherit_from.source_instance_id) {
-        if (!instanceIds.has(inst.inherit_from.source_instance_id)) {
-          return { ok: false, error: `Instance '${inst.id}' inherits from source_instance_id '${inst.inherit_from.source_instance_id}' which does not exist` };
+        const srcId = inst.inherit_from.source_instance_id;
+        const srcIdx = instanceMap.get(srcId);
+        if (srcIdx === undefined) {
+          return { ok: false, error: `Instance '${inst.id}' inherits from source_instance_id '${srcId}' which does not exist` };
+        }
+        if (srcIdx >= idx) {
+          return { ok: false, error: `Instance '${inst.id}' inherits from source_instance_id '${srcId}' which does not precede it in topological order (source index ${srcIdx} >= instance index ${idx})` };
+        }
+        if (inst.inherit_from.property_tracks) {
+          for (const track of inst.inherit_from.property_tracks) {
+            if (track !== "transform" && track !== "transform_matrix" && track !== "opacity") {
+              return { ok: false, error: `Instance '${inst.id}' specifies invalid inherit property track '${track}'` };
+            }
+          }
         }
       }
     }

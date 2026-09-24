@@ -1,8 +1,10 @@
-import { AnimationClipData, EngineIR, EvaluatedFrameResult, EvaluatedInstance, InstanceData, PrepareOptions, TimelineNodeData } from "./types.js";
+import { AnimationClipData, CubicBezierParams, Easing, EngineIR, EvaluatedFrameResult, EvaluatedInstance, InstanceData, PrepareOptions, TimelineNodeData } from "./types.js";
 import { Clip } from "./clip.js";
 import { AnimationStack, ExpandOptions } from "./stack.js";
 export { EvaluatedInstance, EvaluatedFrameResult, PrepareOptions } from "./types.js";
 import { Instance } from "./instance.js";
+export declare function solveSpringJS(frame: number, fps: number, damping: number, stiffness: number, mass: number): number;
+export declare function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefined, t: number): number;
 export declare class Engine {
     private clips;
     private instances;

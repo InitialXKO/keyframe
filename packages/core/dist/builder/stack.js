@@ -1,6 +1,7 @@
 import { Clip } from "./clip.js";
 import { Instance } from "./instance.js";
-import { PropertyTrackRegistry } from "./property_track.js";
+import { PropertyTrackRegistry, interpolateTransform } from "./property_track.js";
+import { evaluateEasing, solveSpringJS } from "./engine.js";
 function multiplyQuat(a, b) {
     const ax = a[0], ay = a[1], az = a[2], aw = a[3];
     const bx = b[0], by = b[1], bz = b[2], bw = b[3];
@@ -30,6 +31,50 @@ function composeTransforms(accum, curr) {
             accum.origin[2] + curr.origin[2],
         ],
     };
+}
+function computeMaxTransformError(a, b) {
+    let maxErr = 0;
+    for (let i = 0; i < 3; i++) {
+        maxErr = Math.max(maxErr, Math.abs(a.translation[i] - b.translation[i]));
+        maxErr = Math.max(maxErr, Math.abs(a.scale[i] - b.scale[i]));
+        maxErr = Math.max(maxErr, Math.abs(a.origin[i] - b.origin[i]));
+    }
+    for (let i = 0; i < 4; i++) {
+        maxErr = Math.max(maxErr, Math.abs(a.rotation_quat[i] - b.rotation_quat[i]));
+    }
+    return maxErr;
+}
+function subdivideSegment(kf1, kf2, threshold, depth, maxDepth = 4) {
+    if (depth >= maxDepth)
+        return [];
+    const midTime = (kf1.time + kf2.time) / 2;
+    const rawProgress = (midTime - kf1.time) / Math.max(1e-6, kf2.time - kf1.time);
+    let trueFactor = rawProgress;
+    if (kf1.springConfig) {
+        const elapsedSec = (midTime - kf1.time) / 1000;
+        const cfg = kf1.springConfig;
+        trueFactor = solveSpringJS(elapsedSec * 30, 30, cfg.damping ?? 10, cfg.stiffness ?? 100, cfg.mass ?? 1);
+    }
+    else if (kf1.easing) {
+        trueFactor = evaluateEasing(kf1.easing, kf1.cubic_params, rawProgress);
+    }
+    const lerpTrans = interpolateTransform(kf1.transform, kf2.transform, rawProgress);
+    const trueTrans = interpolateTransform(kf1.transform, kf2.transform, trueFactor);
+    const error = computeMaxTransformError(trueTrans, lerpTrans);
+    if (error > threshold || (depth === 0 && kf1.easing !== "Linear")) {
+        const midKf = {
+            time: midTime,
+            transform: trueTrans,
+            opacity: kf1.opacity + (kf2.opacity - kf1.opacity) * trueFactor,
+            easing: kf1.easing,
+            cubic_params: kf1.cubic_params,
+            springConfig: kf1.springConfig,
+        };
+        const leftSub = subdivideSegment(kf1, midKf, threshold, depth + 1, maxDepth);
+        const rightSub = subdivideSegment(midKf, kf2, threshold, depth + 1, maxDepth);
+        return [...leftSub, midKf, ...rightSub];
+    }
+    return [];
 }
 export class AnimationStack {
     id;
@@ -64,6 +109,7 @@ export function expandStack(source, options) {
         origin: [0, 0, 0],
     };
     let accumulatedOpacity = 1.0;
+    let accumulatedCustomTracks = {};
     let lastInstanceId = null;
     for (let idx = 0; idx < items.length; idx++) {
         const item = items[idx];
@@ -72,6 +118,28 @@ export function expandStack(source, options) {
         const offsetMs = item.options?.offsetMs ?? 0;
         const instId = `${source.id}_inst_${idx + 1}`;
         const delay = currentDelayMs + offsetMs;
+        // Helper to compute exact end-state transform & opacity at clip.duration
+        const computeClipEndState = () => {
+            const kfs = clipData.keyframes || [];
+            if (kfs.length === 0) {
+                return { transform: accumulatedTransform, opacity: accumulatedOpacity };
+            }
+            const lastKf = kfs[kfs.length - 1];
+            let endLocalTrans = lastKf.transform;
+            if (kfs.length >= 2 && lastKf.springConfig) {
+                const prevKf = kfs[kfs.length - 2];
+                const durationMs = clipData.duration - prevKf.time;
+                if (durationMs > 0) {
+                    const cfg = lastKf.springConfig;
+                    const springFactor = solveSpringJS((durationMs / 1000) * 30, 30, cfg.damping ?? 10, cfg.stiffness ?? 100, cfg.mass ?? 1);
+                    endLocalTrans = interpolateTransform(prevKf.transform, lastKf.transform, springFactor);
+                }
+            }
+            return {
+                transform: isDynamic ? composeTransforms(accumulatedTransform, endLocalTrans) : endLocalTrans,
+                opacity: isDynamic ? accumulatedOpacity * (lastKf.opacity ?? 1.0) : lastKf.opacity ?? 1.0,
+            };
+        };
         if (isDynamic) {
             // Path B: Runtime Inheritance
             clips.push(clipData);
@@ -81,12 +149,9 @@ export function expandStack(source, options) {
             }
             const instData = instBuilder.build();
             instances.push(instData);
-            // Evaluate end state of clip for accumulating
-            if (clipData.keyframes && clipData.keyframes.length > 0) {
-                const lastKf = clipData.keyframes[clipData.keyframes.length - 1];
-                accumulatedTransform = composeTransforms(accumulatedTransform, lastKf.transform);
-                accumulatedOpacity *= lastKf.opacity ?? 1.0;
-            }
+            const endState = computeClipEndState();
+            accumulatedTransform = endState.transform;
+            accumulatedOpacity = endState.opacity;
             currentDelayMs = delay + clipData.duration;
             lastInstanceId = instId;
         }
@@ -96,14 +161,25 @@ export function expandStack(source, options) {
             const expandedKeyframes = (clipData.keyframes || []).map((kf) => {
                 const composedTrans = composeTransforms(accumulatedTransform, kf.transform);
                 const composedOp = accumulatedOpacity * (kf.opacity ?? 1.0);
-                // Metadata custom tracks support
-                let updatedMetadata = kf.interpolateConfig ? { ...kf.interpolateConfig } : undefined;
+                // Metadata and custom property track interpolation support
+                const composedCustomTracks = { ...accumulatedCustomTracks };
+                if (kf.custom_tracks) {
+                    for (const [trackName, val] of Object.entries(kf.custom_tracks)) {
+                        const accVal = accumulatedCustomTracks[trackName];
+                        composedCustomTracks[trackName] = accVal !== undefined
+                            ? PropertyTrackRegistry.interpolate(trackName, accVal, val, 1.0)
+                            : val;
+                    }
+                }
                 if (clipData.metadata) {
                     for (const [key, val] of Object.entries(clipData.metadata)) {
                         if (key !== "id" && key !== "duration") {
                             const regInterpolator = PropertyTrackRegistry.get(key);
                             if (regInterpolator) {
-                                // Track interpolated value
+                                const accVal = accumulatedCustomTracks[key];
+                                composedCustomTracks[key] = accVal !== undefined
+                                    ? PropertyTrackRegistry.interpolate(key, accVal, val, 1.0)
+                                    : val;
                             }
                         }
                     }
@@ -112,6 +188,7 @@ export function expandStack(source, options) {
                     ...kf,
                     transform: composedTrans,
                     opacity: composedOp,
+                    custom_tracks: Object.keys(composedCustomTracks).length > 0 ? composedCustomTracks : undefined,
                 };
             });
             // Adaptive sampling for curvature accuracy if enabled
@@ -122,19 +199,8 @@ export function expandStack(source, options) {
                     const kf1 = expandedKeyframes[k];
                     const kf2 = expandedKeyframes[k + 1];
                     sampledKfs.push(kf1);
-                    // Subdivide if non-linear curve
-                    if (kf1.easing !== "Linear" || kf1.springConfig) {
-                        const midTime = (kf1.time + kf2.time) / 2;
-                        const factor = 0.5;
-                        const midTrans = PropertyTrackRegistry.interpolate("transform", kf1.transform, kf2.transform, factor);
-                        const midOp = kf1.opacity + (kf2.opacity - kf1.opacity) * factor;
-                        sampledKfs.push({
-                            time: midTime,
-                            transform: midTrans,
-                            opacity: midOp,
-                            easing: kf1.easing,
-                        });
-                    }
+                    const subKfs = subdivideSegment(kf1, kf2, threshold, 0);
+                    sampledKfs.push(...subKfs);
                 }
                 sampledKfs.push(expandedKeyframes[expandedKeyframes.length - 1]);
                 expandedKeyframes.length = 0;
@@ -150,11 +216,14 @@ export function expandStack(source, options) {
                 .delay(delay)
                 .build();
             instances.push(instData);
-            // Update accumulators with end state of this expanded clip
+            const endState = computeClipEndState();
+            accumulatedTransform = endState.transform;
+            accumulatedOpacity = endState.opacity;
             if (expandedKeyframes.length > 0) {
                 const lastKf = expandedKeyframes[expandedKeyframes.length - 1];
-                accumulatedTransform = lastKf.transform;
-                accumulatedOpacity = lastKf.opacity;
+                if (lastKf.custom_tracks) {
+                    Object.assign(accumulatedCustomTracks, lastKf.custom_tracks);
+                }
             }
             currentDelayMs = delay + clipData.duration;
             lastInstanceId = instId;

@@ -121,7 +121,7 @@ function sineInOut(t: number): number {
   return -(Math.cos(t * Math.PI) - 1.0) / 2.0;
 }
 
-function solveSpringJS(frame: number, fps: number, damping: number, stiffness: number, mass: number): number {
+export function solveSpringJS(frame: number, fps: number, damping: number, stiffness: number, mass: number): number {
   const m = mass <= 0 ? 1.0 : mass;
   const t = frame / fps;
   if (t <= 0) return 0.0;
@@ -143,7 +143,7 @@ function solveSpringJS(frame: number, fps: number, damping: number, stiffness: n
   }
 }
 
-function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefined, t: number): number {
+export function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefined, t: number): number {
   const clampedT = Math.max(0, Math.min(1, t));
   switch (easing) {
     case Easing.Linear:
@@ -1038,10 +1038,24 @@ export class Engine {
       if (isInherit && sourceInstIdx >= 0 && sourceInstIdx < i) {
         const sourceOffset = sourceInstIdx * floatsPerInst;
         multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, this.scratchLocalMat, 0);
-        multiplyMatricesTo(floatView, sourceOffset, this.scratchLocalMat, 0, floatView, offset);
+
+        const tracks = inst.inherit_from?.property_tracks;
+        const inheritTransform = !tracks || tracks.length === 0 || tracks.includes("transform") || tracks.includes("transform_matrix");
+        const inheritOpacity = !tracks || tracks.length === 0 || tracks.includes("opacity");
+
+        if (inheritTransform) {
+          multiplyMatricesTo(floatView, sourceOffset, this.scratchLocalMat, 0, floatView, offset);
+        } else {
+          multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
+        }
+
         const sourceOpacity = floatView[sourceOffset + 16];
         const instOpacity = inst.opacity ?? 1.0;
-        floatView[offset + 16] = sourceOpacity * instOpacity * clipOpacity;
+        if (inheritOpacity) {
+          floatView[offset + 16] = sourceOpacity * instOpacity * clipOpacity;
+        } else {
+          floatView[offset + 16] = instOpacity * clipOpacity;
+        }
       } else if (!isAdditive) {
         multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
         const instOpacity = inst.opacity ?? 1.0;
