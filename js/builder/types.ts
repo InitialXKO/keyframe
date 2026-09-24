@@ -166,4 +166,5 @@ export interface EvaluatedInstance {
   opacity: number;
   visible: boolean;
   clipIndex: number;
+  custom_tracks?: Record<string, any>;
 }

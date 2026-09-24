@@ -152,6 +152,19 @@ export function expandStack(source, options) {
             const endState = computeClipEndState();
             accumulatedTransform = endState.transform;
             accumulatedOpacity = endState.opacity;
+            if (clipData.keyframes && clipData.keyframes.length > 0) {
+                const lastKf = clipData.keyframes[clipData.keyframes.length - 1];
+                if (lastKf.custom_tracks) {
+                    Object.assign(accumulatedCustomTracks, lastKf.custom_tracks);
+                }
+            }
+            if (clipData.metadata) {
+                for (const [key, val] of Object.entries(clipData.metadata)) {
+                    if (key !== "id" && key !== "duration" && PropertyTrackRegistry.get(key)) {
+                        accumulatedCustomTracks[key] = val;
+                    }
+                }
+            }
             currentDelayMs = delay + clipData.duration;
             lastInstanceId = instId;
         }

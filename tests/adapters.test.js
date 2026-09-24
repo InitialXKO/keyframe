@@ -260,6 +260,38 @@ test("WebGPUAdapter: Boundary probes (alignment, overflow, device lost)", () => 
   );
 });
 
+test('DOMAdapter and ThreeAdapter custom_tracks rendering consumption', () => {
+  const dummyElem = { style: {} };
+  const mockEngine = {
+    getEvaluatedInstances: () => [
+      {
+        transformMatrix: new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
+        opacity: 0.9,
+        visible: true,
+        custom_tracks: {
+          color: [255, 100, 50],
+          backgroundColor: [0, 50, 100, 0.8],
+        },
+      },
+    ],
+  };
+
+  domAdapter.batchApply([dummyElem], 0, { engine: mockEngine });
+  assert.equal(dummyElem.style.color, "rgb(255, 100, 50)");
+  assert.equal(dummyElem.style.backgroundColor, "rgba(0, 50, 100, 0.8)");
+
+  const mockMesh = {
+    matrixAutoUpdate: true,
+    matrix: { fromArray: () => {} },
+    material: { color: { setRGB: (r, g, b) => { mockMesh._rgb = [r, g, b]; } } },
+  };
+  const ctx = threeAdapter.registerScene({}, mockEngine);
+  ctx.registerObject(mockMesh);
+  threeAdapter.applyToScene(ctx, 0);
+
+  assert.deepEqual(mockMesh._rgb, [255, 100, 50]);
+});
+
 test("WebGPUAdapter: Compute & Read extensions (createComputeResources, dispatchCompute, readFromBuffer, readInstance)", async () => {
   let createdShaderCode = "";
   let dispatchedWorkgroups = 0;

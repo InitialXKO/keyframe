@@ -48,6 +48,31 @@ export class DOMAdapter {
                     elem.setAttribute("style", styleStr);
                 }
             }
+            if (evaluated && evaluated[i] && evaluated[i].custom_tracks) {
+                const tracks = evaluated[i].custom_tracks;
+                if (elem.style) {
+                    for (const [key, val] of Object.entries(tracks)) {
+                        if (key === "color") {
+                            const c = val;
+                            if (Array.isArray(c) && c.length >= 3) {
+                                elem.style.color = c.length >= 4 ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${c[3]})` : `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+                            }
+                        }
+                        else if (key === "backgroundColor" || key === "background_color") {
+                            const c = val;
+                            if (Array.isArray(c) && c.length >= 3) {
+                                elem.style.backgroundColor = c.length >= 4 ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${c[3]})` : `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+                            }
+                        }
+                        else if (key.startsWith("--")) {
+                            elem.style.setProperty(key, String(val));
+                        }
+                        else if (key in elem.style) {
+                            elem.style[key] = String(val);
+                        }
+                    }
+                }
+            }
         }
     }
 }

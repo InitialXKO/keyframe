@@ -225,6 +225,32 @@ test('Issue #51: Spring keyframe consistency matrix (Path A vs Path B)', async (
   assert.ok(diff < 1e-3, `Spring end state mismatch between Path A (${instA.transformMatrix[12]}) and Path B (${instB.transformMatrix[12]}), diff=${diff}`);
 });
 
+test('Issue #51: Custom tracks accumulate across Path B dynamic segment to subsequent Path A static segment', () => {
+  const clip1 = new Clip('c1').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(0, 0, 0).build(),
+    opacity: 1,
+    easing: Easing.Linear,
+    custom_tracks: { color: [255, 0, 0] },
+  });
+
+  const clip2 = new Clip('c2').duration(1000).addKeyframe({
+    time: 0,
+    transform: new TransformBuilder().translate(10, 0, 0).build(),
+    opacity: 1,
+    easing: Easing.Linear,
+  });
+
+  const stack = new AnimationStack('stack_custom_b')
+    .add(clip1, { dynamic: true })  // Path B
+    .add(clip2, { dynamic: false }); // Path A
+
+  const ir = stack.expand();
+  const expandedClip2 = ir.clips[1];
+  assert.ok(expandedClip2.keyframes[0].custom_tracks, 'Expected custom_tracks to be present on subsequent static clip keyframe');
+  assert.deepEqual(expandedClip2.keyframes[0].custom_tracks.color, [255, 0, 0]);
+});
+
 test('Issue #49: AnimationStack dynamic expansion (Path B) and Runtime Inheritance evaluation', async () => {
   const clipA = new Clip('c_a').duration(1000).addKeyframe({
     time: 0,
