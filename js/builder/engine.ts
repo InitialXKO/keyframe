@@ -3,6 +3,7 @@ import { Clip } from "./clip.js";
 import { OPFSStorage } from "../opfs_storage.js";
 import { globalBufferPool, globalInstancePool } from "./buffer_pool.js";
 import { AnimationStack, ExpandOptions } from "./stack.js";
+import { PropertyTrackRegistry } from "./property_track.js";
 
 export { EvaluatedInstance, EvaluatedFrameResult, PrepareOptions } from "./types.js";
 import { Instance } from "./instance.js";
@@ -121,7 +122,7 @@ function sineInOut(t: number): number {
   return -(Math.cos(t * Math.PI) - 1.0) / 2.0;
 }
 
-function solveSpringJS(frame: number, fps: number, damping: number, stiffness: number, mass: number): number {
+export function solveSpringJS(frame: number, fps: number, damping: number, stiffness: number, mass: number): number {
   const m = mass <= 0 ? 1.0 : mass;
   const t = frame / fps;
   if (t <= 0) return 0.0;
@@ -143,7 +144,7 @@ function solveSpringJS(frame: number, fps: number, damping: number, stiffness: n
   }
 }
 
-function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefined, t: number): number {
+export function evaluateEasing(easing: Easing, cubicParams: CubicBezierParams | undefined, t: number): number {
   const clampedT = Math.max(0, Math.min(1, t));
   switch (easing) {
     case Easing.Linear:
@@ -1038,10 +1039,24 @@ export class Engine {
       if (isInherit && sourceInstIdx >= 0 && sourceInstIdx < i) {
         const sourceOffset = sourceInstIdx * floatsPerInst;
         multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, this.scratchLocalMat, 0);
-        multiplyMatricesTo(floatView, sourceOffset, this.scratchLocalMat, 0, floatView, offset);
+
+        const tracks = inst.inherit_from?.property_tracks;
+        const inheritTransform = !tracks || tracks.length === 0 || tracks.includes("transform") || tracks.includes("transform_matrix");
+        const inheritOpacity = !tracks || tracks.length === 0 || tracks.includes("opacity");
+
+        if (inheritTransform) {
+          multiplyMatricesTo(floatView, sourceOffset, this.scratchLocalMat, 0, floatView, offset);
+        } else {
+          multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
+        }
+
         const sourceOpacity = floatView[sourceOffset + 16];
         const instOpacity = inst.opacity ?? 1.0;
-        floatView[offset + 16] = sourceOpacity * instOpacity * clipOpacity;
+        if (inheritOpacity) {
+          floatView[offset + 16] = sourceOpacity * instOpacity * clipOpacity;
+        } else {
+          floatView[offset + 16] = instOpacity * clipOpacity;
+        }
       } else if (!isAdditive) {
         multiplyMatricesTo(this.scratchInitialMat, 0, this.scratchClipMat, 0, floatView, offset);
         const instOpacity = inst.opacity ?? 1.0;
@@ -1190,6 +1205,49 @@ export class Engine {
       item.opacity = floatView[offset + 16];
       item.visible = uintView ? uintView[offset + 17] === 1 : floatView[offset + 17] === 1;
       item.clipIndex = uintView ? uintView[offset + 18] : floatView[offset + 18];
+
+      if (instData?.clip_id && this.clips.has(instData.clip_id)) {
+        const clip = this.clips.get(instData.clip_id)!;
+        const kfs = clip.keyframes || [];
+        if (kfs.length > 0) {
+          const customTracks: Record<string, any> = {};
+          if (clip.metadata) {
+            for (const [k, v] of Object.entries(clip.metadata)) {
+              if (k !== "id" && k !== "duration" && PropertyTrackRegistry.get(k)) {
+                customTracks[k] = v;
+              }
+            }
+          }
+          const localTime = Math.max(0, globalTime - instData.delay);
+          if (kfs.length === 1) {
+            if (kfs[0].custom_tracks) Object.assign(customTracks, kfs[0].custom_tracks);
+          } else {
+            let kfIdx = 0;
+            while (kfIdx < kfs.length - 1 && kfs[kfIdx + 1].time <= localTime) {
+              kfIdx++;
+            }
+            const kf1 = kfs[kfIdx];
+            const kf2 = kfs[Math.min(kfIdx + 1, kfs.length - 1)];
+            const span = kf2.time - kf1.time;
+            const factor = span > 0 ? evaluateEasing(kf1.easing, kf1.cubic_params, (localTime - kf1.time) / span) : 1.0;
+
+            if (kf1.custom_tracks || kf2.custom_tracks) {
+              const allTrackKeys = new Set([
+                ...Object.keys(kf1.custom_tracks || {}),
+                ...Object.keys(kf2.custom_tracks || {}),
+              ]);
+              for (const trKey of allTrackKeys) {
+                const v1 = kf1.custom_tracks?.[trKey];
+                const v2 = kf2.custom_tracks?.[trKey] ?? v1;
+                if (v1 !== undefined) {
+                  customTracks[trKey] = PropertyTrackRegistry.interpolate(trKey, v1, v2, factor);
+                }
+              }
+            }
+          }
+          item.custom_tracks = Object.keys(customTracks).length > 0 ? customTracks : undefined;
+        }
+      }
     }
 
     return this.cachedEvaluatedInstances;

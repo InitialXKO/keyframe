@@ -74,6 +74,7 @@ export interface KeyframeData {
     cubic_params?: CubicBezierParams;
     springConfig?: SpringConfig;
     interpolateConfig?: InterpolateConfig;
+    custom_tracks?: Record<string, any>;
 }
 export interface AnimationClipData {
     id: string;
@@ -147,4 +148,5 @@ export interface EvaluatedInstance {
     opacity: number;
     visible: boolean;
     clipIndex: number;
+    custom_tracks?: Record<string, any>;
 }

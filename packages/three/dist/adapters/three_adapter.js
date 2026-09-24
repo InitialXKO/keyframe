@@ -92,6 +92,15 @@ export class ThreeAdapter {
                     obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
                 }
             }
+            if (instData.custom_tracks) {
+                const tracks = instData.custom_tracks;
+                if (tracks.color && obj.material && obj.material.color && typeof obj.material.color.setRGB === "function") {
+                    const c = tracks.color;
+                    if (Array.isArray(c) && c.length >= 3) {
+                        obj.material.color.setRGB(c[0], c[1], c[2]);
+                    }
+                }
+            }
         }
     }
 }

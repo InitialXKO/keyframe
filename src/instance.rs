@@ -55,9 +55,32 @@ impl Instance {
 
         let (final_mat, final_opacity) = if is_inherit {
             if let Some(src) = source_data {
-                let src_mat = Mat4::from_cols_array(&src.transform_matrix);
                 let current_mat = initial_mat * clip_mat;
-                (src_mat * current_mat, src.opacity * self.data.opacity * clip_opacity)
+                let tracks = self.data.inherit_from.as_ref().and_then(|i| i.property_tracks.as_ref());
+
+                let inherit_transform = match tracks {
+                    Some(t) if !t.is_empty() => t.iter().any(|tr| tr == "transform" || tr == "transform_matrix"),
+                    _ => true,
+                };
+                let inherit_opacity = match tracks {
+                    Some(t) if !t.is_empty() => t.iter().any(|tr| tr == "opacity"),
+                    _ => true,
+                };
+
+                let src_mat = Mat4::from_cols_array(&src.transform_matrix);
+                let mat = if inherit_transform {
+                    src_mat * current_mat
+                } else {
+                    current_mat
+                };
+
+                let opacity = if inherit_opacity {
+                    src.opacity * self.data.opacity * clip_opacity
+                } else {
+                    self.data.opacity * clip_opacity
+                };
+
+                (mat, opacity)
             } else {
                 (initial_mat * clip_mat, self.data.opacity * clip_opacity)
             }

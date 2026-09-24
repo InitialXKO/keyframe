@@ -74,7 +74,12 @@ impl Validator {
         instances: &[InstanceData],
         clips: &[AnimationClipData],
     ) -> Result<(), String> {
-        for inst in instances {
+        let mut instance_map = std::collections::HashMap::new();
+        for (idx, inst) in instances.iter().enumerate() {
+            instance_map.insert(inst.id.as_str(), idx);
+        }
+
+        for (idx, inst) in instances.iter().enumerate() {
             let found = clips.iter().any(|c| c.id == inst.clip_id);
             if !found {
                 return Err(format!(
@@ -83,12 +88,31 @@ impl Validator {
                 ));
             }
             if let Some(info) = &inst.inherit_from {
-                let src_found = instances.iter().any(|i| i.id == info.source_instance_id);
-                if !src_found {
-                    return Err(format!(
-                        "Instance '{}' inherits from source_instance_id '{}' which does not exist",
-                        inst.id, info.source_instance_id
-                    ));
+                match instance_map.get(info.source_instance_id.as_str()) {
+                    None => {
+                        return Err(format!(
+                            "Instance '{}' inherits from source_instance_id '{}' which does not exist",
+                            inst.id, info.source_instance_id
+                        ));
+                    }
+                    Some(&src_idx) if src_idx >= idx => {
+                        return Err(format!(
+                            "Instance '{}' inherits from source_instance_id '{}' which does not precede it in topological order (source index {} >= instance index {})",
+                            inst.id, info.source_instance_id, src_idx, idx
+                        ));
+                    }
+                    _ => {}
+                }
+
+                if let Some(tracks) = &info.property_tracks {
+                    for track in tracks {
+                        if track != "transform" && track != "transform_matrix" && track != "opacity" {
+                            return Err(format!(
+                                "Instance '{}' specifies invalid inherit property track '{}'",
+                                inst.id, track
+                            ));
+                        }
+                    }
                 }
             }
         }

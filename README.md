@@ -20,6 +20,8 @@
   - [5. 播放控制器 (@keyframe-engine/controller)](#5-播放控制器-keyframecontroller)
   - [6. Remotion 兼容层](#6-remotion-兼容层)
   - [7. 实时物理 (@keyframe-engine/physics)](#7-实时物理-keyframephysics)
+  - [8. 双路径动画组合 AnimationStack (@keyframe-engine/core)](#8-双路径动画组合-animationstack-keyframeenginecore)
+  - [9. CSG 距离场与 Keyframe 动画桥接 (@keyframe-engine/sdf)](#9-csg-距离场与-keyframe-动画桥接-keyframeenginesdf)
 - [ 开发与测试](#-开发与测试)
 - [ DevTools 扩展与 Starter Kits](#-devtools-扩展与-starter-kits)
 - [ 许可证](#-许可证)
@@ -29,10 +31,15 @@
 ## 核心特性
 
 - **Rust WASM 计算内核与 $O(\log N)$ 二分查找**: 高吞吐量时间轴平坦化、预计算 Keyframe 分块边界 ($O(\log N)$ 二分快速查找)、三次贝塞尔曲线 (Cubic-Bezier) 缓动解算、四元数球面线性插值 (Slerp)、时间重映射 (Time Remapping) 与加性混合 (Additive Blending)。
+- **双路径动画组合 (Dual-Path Animation Composition)**:
+  - **路径 A (烘焙期静态展开)**: 通过 `AnimationStack` (`expandStack` / `stack.expand()`) 在编译/烘焙期展开动画链，自动求解多 Clip 拼接处的缝隙值 (Value Seams)，并支持非线性曲线自适应采样细分 (Adaptive Sampling Subdivision)。
+  - **路径 B (运行时动态状态继承)**: 通过 `BlendMode.Inherit` 和 `inherit_from: { source_instance_id }` 实现跨 Instance 运行期动态状态继承与属性级联。
+  - **自定义属性轨道 (Property Track Registry)**: `PropertyTrackRegistry` 支持注册与插值自定义属性轨道 (`transform`, `opacity`, `number`, `color_rgb`)。
 - **多 Instance 联动 (Multi-Instance Coupling)**:
   - **方案 A (声明式 DAG 依赖)**：通过 `Instance.prototype.dependsOn()` 设置 `onComplete` / `onStart` / `onKeyframe` 事件条件及偏移量，由引擎拓扑计算动态延时。
   - **方案 B (响应式 Apply Chain)**：通过 `Instance.prototype.bindTransformFrom()` 实现属性实时追随与空间变换绑定。
   - **方案 C (播放器 Aligner 屏障)**：通过 `@keyframe-engine/controller` 的 `player.createAligner().waitUntil()` 机制提供运行时信号屏障与挂起同步。
+- **CSG 距离场与 Raymarching 桥接 (`@keyframe-engine/sdf`)**: 提供 WebGL2 (`SdfEngine`) 与 WebGPU (`SdfWebGPUEngine`) CSG 隐式 Signed Distance Field (SDF) 光线追踪解算器、CPU 距离场求值器 (`evalSceneMap`) 以及 Keyframe Engine 80 字节 `GpuInstanceData` 零拷贝变换自动桥接器 (`initKeyframeBridge` / `solvePoses`)。
 - **OPFS 持久化与流式烘焙**: 支持基于 Origin Private File System (OPFS) 的分块流式烘焙与二进制预渲染数据加载。
 - **Zero-Copy ABI 内存布局**: 采用 `#[repr(C, align(16))]` 保证 16 字节对齐与 80 字节固定实例布局 (`INSTANCE_SIZE = 80`)，实现 WASM 至 WebGPU Buffer 内存零拷贝传输。
 - **音频主时钟自适应收敛 (Audio Clock Master)**: `@keyframe-engine/controller` 支持微小漂移 (< ±50ms) 的双循环 timeScale 微调与较大漂移 (> ±100ms) 的硬帧重锁定。
@@ -50,13 +57,14 @@
 
 | 包名 | 说明 |
 | --- | --- |
-| **`@keyframe-engine/core`** | WASM 内核封装、JS Engine Builder、基础类型定义及 ABI 常量 (`INSTANCE_SIZE = 80`) |
+| **`@keyframe-engine/core`** | WASM 内核封装、JS Engine Builder、AnimationStack 组合机制、基础类型定义及 ABI 常量 (`INSTANCE_SIZE = 80`) |
 | **`@keyframe-engine/controller`** | 标准播放控制器 (`AnimationPlayer`)，支持音频主时钟微调与事件分发 |
 | **`@keyframe-engine/three`** | Three.js 绑定适配器，支持 Token 凭证无状态场景同步与栅格化语义控制 |
 | **`@keyframe-engine/webgpu`** | WebGPU Buffer 直写适配器，具备对齐校验、溢出检查与设备丢失感知的三层边界防护 |
 | **`@keyframe-engine/dom`** | DOM & CSS `matrix3d()` 批量绑定适配器，内置 performance guardrail |
 | **`@keyframe-engine/math`** | 层级树矩阵级联计算与拓扑排序工具 (`HierarchyResolver`) |
 | **`@keyframe-engine/physics`** | 实时交互弹簧物理引擎 (`RealTimeSpring`)，支持 `mass/damping/stiffness` 实时参数计算 |
+| **`@keyframe-engine/sdf`** | WebGL2 / WebGPU CSG 距离场 (SDF) Raymarching 引擎、CPU 距离场求值器与 Keyframe 动画桥接器 (`SdfEngine`, `SdfWebGPUEngine`, `evalSceneMap`, `initKeyframeBridge`, `solvePoses`) |
 
 ---
 
@@ -139,7 +147,6 @@ const clip = new Clip("bounce_clip")
       .opacity(0.5)
   );
 
-// 创建动画实例
 // 创建动画实例并配置多 Instance 联动
 const instance1 = new Instance("bounce_clip", "inst_1")
   .delay(0)
@@ -303,6 +310,72 @@ function animate(now: number, dt: number) {
 
   domAdapter.batchApply(elements, now, { engine });
   requestAnimationFrame(animate);
+}
+```
+
+---
+
+### 8. 双路径动画组合 AnimationStack (`@keyframe-engine/core`)
+
+Keyframe Engine 支持静态展开 (Path A) 与动态运行时继承 (Path B) 两种动画组合机制：
+
+```typescript
+import { AnimationStack, Clip, Instance, Keyframe, TransformBuilder, BlendMode } from "@keyframe-engine/core";
+
+// 1. 创建动画剪辑链
+const clip1 = new Clip("walk")
+  .duration(1000)
+  .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+  .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(100).build()));
+
+const clip2 = new Clip("jump")
+  .duration(800)
+  .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateY(0).build()))
+  .addKeyframe(new Keyframe(800).transform(new TransformBuilder().translateY(150).build()));
+
+// 2. 创建 AnimationStack 并添加 Clip 节点
+const stack = new AnimationStack("hero_sequence")
+  .add(clip1, { offsetMs: 0 })
+  .add(clip2, { offsetMs: 100, dynamic: false }); // dynamic: false 采用 Path A 烘焙期缝隙自动求解与平滑拼接
+
+// 3. 展开 AnimationStack 得到 Engine IR (支持非线性曲线自适应采样细分)
+const ir = stack.expand({ adaptiveSampling: true, maxErrorThreshold: 1e-4 });
+engine.loadIR(ir);
+
+// 4. 或采用 Path B 运行时状态继承 (BlendMode.Inherit)
+const dynamicInst = new Instance("jump", "hero_jump_inst")
+  .delay(1100)
+  .inheritFrom("hero_walk_inst", ["transform", "opacity"]);
+```
+
+---
+
+### 9. CSG 距离场与 Keyframe 动画桥接 (`@keyframe-engine/sdf`)
+
+```typescript
+import { SdfEngine, initKeyframeBridge } from "@keyframe-engine/sdf";
+import { Engine } from "@keyframe-engine/core";
+
+const engine = new Engine();
+// ... 初始化 Clip 与 Instance ...
+
+// 创建 WebGL2 CSG SDF 渲染引擎
+const canvas = document.querySelector("#sdf-canvas") as HTMLCanvasElement;
+const sdfEngine = new SdfEngine(canvas);
+
+// 初始化 Keyframe 80 字节 GpuInstanceData 与 SDF Primitive 自动映射桥接
+const bridge = initKeyframeBridge(engine, sdfEngine, {
+  primMapping: {
+    inst_1: 0, // 将 inst_1 映射至 SDF Scene Primitive #0
+    inst_2: 1, // 将 inst_2 映射至 SDF Scene Primitive #1
+  },
+});
+
+function render(timeMs: number) {
+  // 零拷贝更新 SDF 几何体位姿与四元数旋转
+  bridge.update(timeMs);
+  sdfEngine.render();
+  requestAnimationFrame(render);
 }
 ```
 
