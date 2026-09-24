@@ -4,6 +4,7 @@
 export enum BlendMode {
     Override = 0,
     Additive = 1,
+    Inherit = 2,
 }
 
 export enum EasingType {

@@ -1,11 +1,12 @@
 /* @ts-self-types="./keyframe_engine.d.ts" */
 
 /**
- * @enum {0 | 1}
+ * @enum {0 | 1 | 2}
  */
 export const BlendMode = Object.freeze({
     Override: 0, "0": "Override",
     Additive: 1, "1": "Additive",
+    Inherit: 2, "2": "Inherit",
 });
 
 /**
