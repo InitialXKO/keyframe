@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { Engine, Clip, Instance, Keyframe, Easing, BlendMode, TransformBuilder, Canvas2DRenderer, createRenderer, MemoryWriter, createSyncOPFSWriter, createAsyncOPFSWriter, createMemoryWriter, createOPFSWriter } from "../dist/index.js";
 import { spring, interpolate, interpolateColors, Sequence, Series, createRemotionAdapter, setRemotionFrameContext, useCurrentFrame } from "../dist/remotion/index.js";
@@ -548,6 +549,7 @@ test("Engine WASM Memory binding, auto-resolution, and error handling", async ()
 
   // 5. Fallback JS evaluation when skipEvaluate is set to true
   const jsEngine = new Engine();
+  jsEngine.addClip(new Clip("c1").duration(1000));
   jsEngine.addInstances([new Instance("c1", "inst1")]);
   await jsEngine.prepare({ storage: { enabled: false } }).catch(() => {});
   const jsList = jsEngine.getEvaluatedInstances(0, true);
@@ -928,6 +930,61 @@ test("Engine bakeStream with WASM mock & async callback support", async () => {
   assert.equal(streamCallCount, 1);
   assert.equal(asyncReceivedBytes, 2480);
   assert.equal(asyncTotal, 2480);
+});
+
+test("Package Smoke Test: @keyframe-engine/core subpackage imports glue and evaluates frame without ERR_MODULE_NOT_FOUND", async () => {
+  const { Engine: CoreEngine, Clip: CoreClip, Instance: CoreInstance, Keyframe: CoreKeyframe, TransformBuilder: CoreTransformBuilder } = await import("../packages/core/dist/index.js");
+  const wasmPath = resolve("packages/core/dist/pkg/keyframe_engine_bg.wasm");
+  const wasmFileUrl = pathToFileURL(wasmPath).href;
+
+  const engine = new CoreEngine();
+  const clip = new CoreClip("subpkg_smoke_clip")
+    .duration(1000)
+    .addKeyframe(new CoreKeyframe(0).transform(new CoreTransformBuilder().translateX(0).build()))
+    .addKeyframe(new CoreKeyframe(1000).transform(new CoreTransformBuilder().translateX(300).build()));
+
+  engine.addClip(clip);
+  engine.addInstances([new CoreInstance("subpkg_smoke_clip", "i1")]);
+
+  await engine.prepare({
+    wasmUrl: wasmFileUrl,
+    storage: { enabled: false },
+  });
+
+  assert.ok(engine.wasmInstance !== null);
+  const instances = engine.getEvaluatedInstances(500);
+  assert.equal(instances.length, 1);
+  assert.ok(Math.abs(instances[0].transformMatrix[12] - 150) < 1e-3);
+});
+
+test("Engine.prepare() automatic WASM loading via glue code initializes KeyframeEngine and evaluates frame", async () => {
+  const wasmPath = resolve("packages/core/dist/pkg/keyframe_engine_bg.wasm");
+  const wasmFileUrl = pathToFileURL(wasmPath).href;
+
+  const engine = new Engine();
+  const clip = new Clip("wasm_auto_clip")
+    .duration(1000)
+    .addKeyframe(new Keyframe(0).transform(new TransformBuilder().translateX(0).build()))
+    .addKeyframe(new Keyframe(1000).transform(new TransformBuilder().translateX(200).build()));
+
+  engine.addClip(clip);
+  engine.addInstances([new Instance("wasm_auto_clip", "i1")]);
+
+  await engine.prepare({
+    wasmUrl: wasmFileUrl,
+    storage: { enabled: false },
+  });
+
+  assert.ok(engine.wasmInstance !== null, "wasmInstance must be non-null after prepare()");
+  assert.equal(typeof engine.wasmInstance.evaluate_frame, "function", "wasmInstance must expose KeyframeEngine glue method evaluate_frame");
+
+  const evalFrame = engine.evaluateFrame(500);
+  assert.equal(evalFrame.count, 1);
+  assert.ok(evalFrame.ptr > 0, "WASM instance buffer pointer must be positive");
+
+  const instances = engine.getEvaluatedInstances(500);
+  assert.equal(instances.length, 1);
+  assert.ok(Math.abs(instances[0].transformMatrix[12] - 100) < 1e-3, "WASM core evaluation tx should be 100 at t=500ms");
 });
 
 test("NPM Tarball verification: dist/pkg/keyframe_engine_bg.wasm exists, .gitignore does not, and npm pack includes WASM", () => {

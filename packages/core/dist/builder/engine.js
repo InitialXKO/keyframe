@@ -3,6 +3,8 @@ import { Clip } from "./clip.js";
 import { OPFSStorage } from "../opfs_storage.js";
 import { globalBufferPool, globalInstancePool } from "./buffer_pool.js";
 import { PropertyTrackRegistry } from "./property_track.js";
+// @ts-ignore
+import initWasm, { KeyframeEngine } from "../pkg/keyframe_engine.js";
 import { Instance } from "./instance.js";
 function solveCubicBezier(p1x, p1y, p2x, p2y, t) {
     if (t <= 0)
@@ -661,46 +663,58 @@ export class Engine {
         // Stage 1: Synchronous validation
         options?.onProgress?.("validation");
         this.validateIRCompatibility();
-        // Stage 2: WASM loading (if no existing instance)
-        if (!this.wasmInstance) {
+        // Stage 2: WASM loading (if no existing instance or instance lacks WASM methods)
+        if (!this.wasmInstance || (typeof this.wasmInstance.add_clip_json !== "function" && typeof this.wasmInstance.evaluate_frame !== "function")) {
             options?.onProgress?.("wasm_loading");
             const url = options?.wasmUrl || "https://cdn.jsdelivr.net/npm/@keyframe-engine/core/dist/pkg/keyframe_engine_bg.wasm";
             const loadPromise = (async () => {
-                let instance = null;
-                let exports = null;
-                if (typeof WebAssembly === "undefined" || typeof fetch === "undefined") {
-                    throw new Error("Environment does not support WebAssembly or fetch. Host environment must support WebAssembly and fetch API to load WASM engine module.");
+                if (typeof WebAssembly === "undefined") {
+                    throw new Error("Environment does not support WebAssembly. Host environment must support WebAssembly API to load WASM engine module.");
                 }
                 try {
-                    const response = await fetch(url);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                    let wasmInput = url;
+                    if (typeof url === "string") {
+                        const g = globalThis;
+                        const isNode = typeof g !== "undefined" && g.process?.versions?.node;
+                        if (isNode && url.startsWith("file:")) {
+                            const modFs = "node:fs";
+                            const modUrl = "node:url";
+                            const fs = await import(modFs);
+                            const urlMod = await import(modUrl);
+                            wasmInput = fs.readFileSync(urlMod.fileURLToPath(url));
+                        }
+                        else if (isNode && !url.startsWith("http://") && !url.startsWith("https://")) {
+                            const modFs = "node:fs";
+                            const fs = await import(modFs);
+                            if (fs.existsSync(url)) {
+                                wasmInput = fs.readFileSync(url);
+                            }
+                        }
                     }
-                    if (WebAssembly.instantiateStreaming) {
+                    if (typeof wasmInput === "string") {
+                        const response = await fetch(wasmInput);
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                        }
+                        wasmInput = response;
+                    }
+                    const wasmExports = await initWasm(wasmInput);
+                    const kfEngine = new KeyframeEngine();
+                    kfEngine.memory = wasmExports.memory;
+                    this.wasmInstance = kfEngine;
+                    this.bindWasmMemory(wasmExports.memory);
+                    // Synchronize registered clips, instances, and timeline to the WASM core
+                    for (const clip of this.clips.values()) {
+                        this.wasmInstance.add_clip_json(JSON.stringify(clip));
+                    }
+                    for (const inst of this.instances) {
                         try {
-                            const res = await WebAssembly.instantiateStreaming(response.clone());
-                            instance = res.instance;
-                            exports = instance.exports;
+                            this.wasmInstance.add_instance_json(JSON.stringify(inst));
                         }
-                        catch (e) {
-                            const buffer = await response.arrayBuffer();
-                            const res = await WebAssembly.instantiate(buffer);
-                            instance = res.instance;
-                            exports = instance.exports;
-                        }
+                        catch (_) { }
                     }
-                    else {
-                        const buffer = await response.arrayBuffer();
-                        const res = await WebAssembly.instantiate(buffer);
-                        instance = res.instance;
-                        exports = instance.exports;
-                    }
-                    this.wasmInstance = exports || instance;
-                    if (exports && exports.memory) {
-                        this.bindWasmMemory(exports.memory);
-                    }
-                    else if (instance && instance.exports && instance.exports.memory) {
-                        this.bindWasmMemory(instance.exports.memory);
+                    if (this.rootTimeline) {
+                        this.wasmInstance.set_root_timeline_json(JSON.stringify(this.rootTimeline));
                     }
                 }
                 catch (fetchErr) {
