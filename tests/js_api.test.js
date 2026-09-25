@@ -932,6 +932,31 @@ test("Engine bakeStream with WASM mock & async callback support", async () => {
   assert.equal(asyncTotal, 2480);
 });
 
+test("Package Smoke Test: @keyframe-engine/core subpackage imports glue and evaluates frame without ERR_MODULE_NOT_FOUND", async () => {
+  const { Engine: CoreEngine, Clip: CoreClip, Instance: CoreInstance, Keyframe: CoreKeyframe, TransformBuilder: CoreTransformBuilder } = await import("../packages/core/dist/index.js");
+  const wasmPath = resolve("packages/core/dist/pkg/keyframe_engine_bg.wasm");
+  const wasmFileUrl = pathToFileURL(wasmPath).href;
+
+  const engine = new CoreEngine();
+  const clip = new CoreClip("subpkg_smoke_clip")
+    .duration(1000)
+    .addKeyframe(new CoreKeyframe(0).transform(new CoreTransformBuilder().translateX(0).build()))
+    .addKeyframe(new CoreKeyframe(1000).transform(new CoreTransformBuilder().translateX(300).build()));
+
+  engine.addClip(clip);
+  engine.addInstances([new CoreInstance("subpkg_smoke_clip", "i1")]);
+
+  await engine.prepare({
+    wasmUrl: wasmFileUrl,
+    storage: { enabled: false },
+  });
+
+  assert.ok(engine.wasmInstance !== null);
+  const instances = engine.getEvaluatedInstances(500);
+  assert.equal(instances.length, 1);
+  assert.ok(Math.abs(instances[0].transformMatrix[12] - 150) < 1e-3);
+});
+
 test("Engine.prepare() automatic WASM loading via glue code initializes KeyframeEngine and evaluates frame", async () => {
   const wasmPath = resolve("packages/core/dist/pkg/keyframe_engine_bg.wasm");
   const wasmFileUrl = pathToFileURL(wasmPath).href;

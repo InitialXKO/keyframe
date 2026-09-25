@@ -42,7 +42,7 @@
   },
   "scripts": {
     "build:shaders": "node scripts/embed-shaders.js",
-    "build:wasm": "wasm-pack build --target web --out-dir pkg",
+    "build:wasm": "wasm-pack build --target web --out-dir dist/pkg",
     "build:ts": "npm run build:shaders && tsc",
     "build:distribute": "node scripts/distribute.js",
     "build": "npm run build:shaders && npm run build:wasm && npm run build:ts && npm run build:distribute",

@@ -3,7 +3,8 @@ import { Clip } from "./clip.js";
 import { OPFSStorage } from "../opfs_storage.js";
 import { globalBufferPool, globalInstancePool } from "./buffer_pool.js";
 import { PropertyTrackRegistry } from "./property_track.js";
-import initWasm, { KeyframeEngine } from "../../pkg/keyframe_engine.js";
+// @ts-ignore
+import initWasm, { KeyframeEngine } from "../pkg/keyframe_engine.js";
 import { Instance } from "./instance.js";
 function solveCubicBezier(p1x, p1y, p2x, p2y, t) {
     if (t <= 0)

@@ -4,7 +4,8 @@ import { OPFSStorage } from "../opfs_storage.js";
 import { globalBufferPool, globalInstancePool } from "./buffer_pool.js";
 import { AnimationStack, ExpandOptions } from "./stack.js";
 import { PropertyTrackRegistry } from "./property_track.js";
-import initWasm, { KeyframeEngine } from "../../pkg/keyframe_engine.js";
+// @ts-ignore
+import initWasm, { KeyframeEngine } from "../pkg/keyframe_engine.js";
 
 export { EvaluatedInstance, EvaluatedFrameResult, PrepareOptions } from "./types.js";
 import { Instance } from "./instance.js";
